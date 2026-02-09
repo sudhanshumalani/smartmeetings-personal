@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment variables
+.env
+.env.*
+*.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+Thumbs.db
+.DS_Store
+nul
+
+# TypeScript build info
+tsconfig.tsbuildinfo
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Logs
+*.log
