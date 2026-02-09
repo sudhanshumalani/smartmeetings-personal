@@ -39,7 +39,7 @@ export default function App() {
     <ThemeProvider>
       <ToastProvider>
         <OnlineProvider>
-          <BrowserRouter>
+          <BrowserRouter basename="/smartmeetings-personal">
             <Routes>
               <Route element={<Layout />}>
                 <Route index element={<MeetingListPage />} />
