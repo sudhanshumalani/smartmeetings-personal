@@ -15,6 +15,7 @@ import {
   Loader2,
   LogIn,
   LogOut,
+  Palette,
 } from 'lucide-react';
 import {
   getClaudeApiKey,
@@ -38,6 +39,14 @@ import {
   type ExportData,
 } from '../../../services/exportService';
 import CategoryManager from '../../stakeholders/components/CategoryManager';
+
+function SectionIcon({ icon: Icon, color }: { icon: typeof Key; color: string }) {
+  return (
+    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${color}`}>
+      <Icon size={16} className="text-white" />
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
@@ -65,7 +74,9 @@ export default function SettingsPage() {
   const [restoring, setRestoring] = useState(false);
 
   // Storage
-  const [storageUsage, setStorageUsage] = useState<string | null>(null);
+  const [storageUsed, setStorageUsed] = useState(0);
+  const [storageQuota, setStorageQuota] = useState(0);
+  const [storageLabel, setStorageLabel] = useState<string | null>(null);
 
   // Import
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -93,11 +104,15 @@ export default function SettingsPage() {
       if (navigator.storage?.estimate) {
         try {
           const est = await navigator.storage.estimate();
-          const usedMB = ((est.usage ?? 0) / (1024 * 1024)).toFixed(1);
-          const quotaMB = ((est.quota ?? 0) / (1024 * 1024)).toFixed(0);
-          setStorageUsage(`${usedMB} MB used of ${quotaMB} MB`);
+          const used = est.usage ?? 0;
+          const quota = est.quota ?? 0;
+          setStorageUsed(used);
+          setStorageQuota(quota);
+          const usedMB = (used / (1024 * 1024)).toFixed(1);
+          const quotaMB = (quota / (1024 * 1024)).toFixed(0);
+          setStorageLabel(`${usedMB} MB used of ${quotaMB} MB`);
         } catch {
-          setStorageUsage('Unable to estimate');
+          setStorageLabel('Unable to estimate');
         }
       }
     }
@@ -259,20 +274,24 @@ export default function SettingsPage() {
     { mode: 'system', label: 'System', icon: Monitor },
   ];
 
+  const storagePercent = storageQuota > 0 ? Math.min(100, (storageUsed / storageQuota) * 100) : 0;
+
   return (
     <div className="mx-auto max-w-2xl">
       <h1 className="mb-6 text-2xl font-bold text-gray-900 dark:text-gray-100">
         Settings
       </h1>
 
-      <div className="space-y-8">
+      <div className="space-y-6">
         {/* --- API Keys --- */}
-        <section>
-          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
-            <Key size={20} />
-            API Keys
-          </h2>
-          <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+        <section className="overflow-hidden rounded-xl bg-white shadow-sm transition-shadow hover:shadow-md dark:bg-gray-800">
+          <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 dark:border-gray-700">
+            <SectionIcon icon={Key} color="bg-gradient-to-br from-brand-500 to-purple-500" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              API Keys
+            </h2>
+          </div>
+          <div className="space-y-4 px-5 py-4">
             {/* Claude API Key */}
             <div>
               <div className="mb-1 flex items-center justify-between">
@@ -297,7 +316,7 @@ export default function SettingsPage() {
                     value={claudeKey}
                     onChange={(e) => setClaudeKey(e.target.value)}
                     placeholder={claudeKeySet ? '••••••••••••' : 'sk-ant-...'}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 pr-10 text-sm transition-colors focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:focus:bg-gray-700"
                     aria-label="Claude API key"
                   />
                   <button
@@ -312,7 +331,7 @@ export default function SettingsPage() {
                 <button
                   onClick={handleSaveClaudeKey}
                   disabled={claudeSaving}
-                  className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                  className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
                 >
                   {claudeSaving ? (
                     <Loader2 size={14} className="animate-spin" />
@@ -348,7 +367,7 @@ export default function SettingsPage() {
                     value={assemblyKey}
                     onChange={(e) => setAssemblyKey(e.target.value)}
                     placeholder={assemblyKeySet ? '••••••••••••' : 'Enter AssemblyAI key'}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 pr-10 text-sm transition-colors focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:focus:bg-gray-700"
                     aria-label="AssemblyAI API key"
                   />
                   <button
@@ -363,7 +382,7 @@ export default function SettingsPage() {
                 <button
                   onClick={handleSaveAssemblyKey}
                   disabled={assemblySaving}
-                  className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                  className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
                 >
                   {assemblySaving ? (
                     <Loader2 size={14} className="animate-spin" />
@@ -378,47 +397,55 @@ export default function SettingsPage() {
         </section>
 
         {/* --- Theme --- */}
-        <section>
-          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
-            <Sun size={20} />
-            Theme
-          </h2>
-          <div className="flex gap-2 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-            {themeOptions.map((opt) => (
-              <button
-                key={opt.mode}
-                onClick={() => setTheme(opt.mode)}
-                className={`flex flex-1 flex-col items-center gap-1.5 rounded-lg p-3 text-sm font-medium transition-colors ${
-                  theme === opt.mode
-                    ? 'bg-blue-50 text-blue-700 ring-2 ring-blue-500 dark:bg-blue-900/30 dark:text-blue-300'
-                    : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-700'
-                }`}
-                aria-label={`${opt.label} theme`}
-              >
-                <opt.icon size={20} />
-                {opt.label}
-              </button>
-            ))}
+        <section className="overflow-hidden rounded-xl bg-white shadow-sm transition-shadow hover:shadow-md dark:bg-gray-800">
+          <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 dark:border-gray-700">
+            <SectionIcon icon={Palette} color="bg-gradient-to-br from-amber-500 to-orange-500" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              Theme
+            </h2>
+          </div>
+          <div className="px-5 py-4">
+            <div className="flex gap-3">
+              {themeOptions.map((opt) => (
+                <button
+                  key={opt.mode}
+                  onClick={() => setTheme(opt.mode)}
+                  className={`flex flex-1 flex-col items-center gap-2 rounded-xl p-4 text-sm font-medium transition-all ${
+                    theme === opt.mode
+                      ? 'bg-brand-50 text-brand-700 ring-2 ring-brand-500 dark:bg-brand-900/30 dark:text-brand-300'
+                      : 'bg-gray-50 text-gray-500 hover:bg-gray-100 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600'
+                  }`}
+                  aria-label={`${opt.label} theme`}
+                >
+                  <opt.icon size={22} />
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
         </section>
 
         {/* --- Categories --- */}
-        <section>
-          <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Stakeholder Categories
-          </h2>
-          <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+        <section className="overflow-hidden rounded-xl bg-white shadow-sm transition-shadow hover:shadow-md dark:bg-gray-800">
+          <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 dark:border-gray-700">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              Stakeholder Categories
+            </h2>
+          </div>
+          <div className="px-5 py-4">
             <CategoryManager />
           </div>
         </section>
 
         {/* --- Google Drive Backup --- */}
-        <section>
-          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
-            <Cloud size={20} />
-            Google Drive Backup
-          </h2>
-          <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+        <section className="overflow-hidden rounded-xl bg-white shadow-sm transition-shadow hover:shadow-md dark:bg-gray-800">
+          <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 dark:border-gray-700">
+            <SectionIcon icon={Cloud} color="bg-gradient-to-br from-sky-500 to-blue-500" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              Google Drive Backup
+            </h2>
+          </div>
+          <div className="space-y-3 px-5 py-4">
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Google Client ID
@@ -429,13 +456,13 @@ export default function SettingsPage() {
                   value={googleClientId}
                   onChange={(e) => setGoogleClientIdState(e.target.value)}
                   placeholder="xxxxxxx.apps.googleusercontent.com"
-                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                  className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm transition-colors focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:focus:bg-gray-700"
                   aria-label="Google Client ID"
                 />
                 <button
                   onClick={handleSaveGoogleClientId}
                   disabled={googleClientIdSaving}
-                  className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                  className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
                 >
                   {googleClientIdSaving ? (
                     <Loader2 size={14} className="animate-spin" />
@@ -462,7 +489,7 @@ export default function SettingsPage() {
                 <button
                   onClick={handleConnectDrive}
                   disabled={driveConnecting || !isOnline}
-                  className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
                 >
                   {driveConnecting ? (
                     <Loader2 size={14} className="animate-spin" />
@@ -474,7 +501,7 @@ export default function SettingsPage() {
               ) : (
                 <button
                   onClick={handleDisconnectDrive}
-                  className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                  className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
                 >
                   <LogOut size={14} />
                   Disconnect
@@ -485,7 +512,7 @@ export default function SettingsPage() {
                   <button
                     onClick={handleTestConnection}
                     disabled={testingConnection}
-                    className="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                    className="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
                   >
                     {testingConnection ? (
                       <Loader2 size={14} className="animate-spin" />
@@ -497,7 +524,7 @@ export default function SettingsPage() {
                   <button
                     onClick={handleRestoreFromDrive}
                     disabled={restoring}
-                    className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                    className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
                   >
                     {restoring ? (
                       <Loader2 size={14} className="animate-spin" />
@@ -514,16 +541,18 @@ export default function SettingsPage() {
 
         {/* --- Data Management (desktop only) --- */}
         {!isMobile && (
-          <section>
-            <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
-              <HardDrive size={20} />
-              Data Management
-            </h2>
-            <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+          <section className="overflow-hidden rounded-xl bg-white shadow-sm transition-shadow hover:shadow-md dark:bg-gray-800">
+            <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 dark:border-gray-700">
+              <SectionIcon icon={HardDrive} color="bg-gradient-to-br from-emerald-500 to-teal-500" />
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                Data Management
+              </h2>
+            </div>
+            <div className="space-y-4 px-5 py-4">
               <div className="flex flex-col gap-3 sm:flex-row">
                 <button
                   onClick={handleExportAll}
-                  className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+                  className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700"
                 >
                   <Download size={16} />
                   Export All Data
@@ -531,7 +560,7 @@ export default function SettingsPage() {
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={importing}
-                  className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                  className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
                 >
                   {importing ? (
                     <Loader2 size={16} className="animate-spin" />
@@ -549,22 +578,33 @@ export default function SettingsPage() {
                   aria-label="Import file"
                 />
               </div>
-              {storageUsage && (
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Storage: {storageUsage}
-                </p>
+              {storageLabel && (
+                <div>
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-sm text-gray-500 dark:text-gray-400">Storage</span>
+                    <span className="text-xs text-gray-400">{storageLabel}</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-brand-500 to-purple-500 transition-all duration-500"
+                      style={{ width: `${Math.max(1, storagePercent)}%` }}
+                    />
+                  </div>
+                </div>
               )}
             </div>
           </section>
         )}
 
         {/* --- About --- */}
-        <section>
-          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
-            <Info size={20} />
-            About
-          </h2>
-          <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+        <section className="overflow-hidden rounded-xl bg-white shadow-sm transition-shadow hover:shadow-md dark:bg-gray-800">
+          <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 dark:border-gray-700">
+            <SectionIcon icon={Info} color="bg-gradient-to-br from-gray-500 to-gray-600" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              About
+            </h2>
+          </div>
+          <div className="px-5 py-4">
             <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
               SmartMeetings v2.0
             </p>

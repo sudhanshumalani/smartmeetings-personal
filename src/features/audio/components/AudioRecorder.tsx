@@ -102,13 +102,13 @@ export default function AudioRecorder({ meetingId, onRecordingComplete }: AudioR
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           {state === 'idle' && (
             <button
               onClick={handleStart}
-              className="audio-record-btn flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+              className="audio-record-btn flex items-center gap-2 rounded-lg bg-gradient-to-r from-red-500 to-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:shadow-md active:scale-[0.98]"
               aria-label="Start recording"
             >
               <Mic size={16} />
@@ -120,7 +120,7 @@ export default function AudioRecorder({ meetingId, onRecordingComplete }: AudioR
             <>
               <button
                 onClick={handlePause}
-                className="audio-record-btn flex items-center gap-2 rounded-lg bg-yellow-500 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-600"
+                className="audio-record-btn flex items-center gap-2 rounded-lg bg-gradient-to-r from-amber-400 to-amber-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:shadow-md"
                 aria-label="Pause recording"
               >
                 <Pause size={16} />
@@ -128,7 +128,7 @@ export default function AudioRecorder({ meetingId, onRecordingComplete }: AudioR
               </button>
               <button
                 onClick={handleStop}
-                className="audio-record-btn flex items-center gap-2 rounded-lg bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700"
+                className="audio-record-btn flex items-center gap-2 rounded-lg bg-gradient-to-r from-gray-600 to-gray-700 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:shadow-md"
                 aria-label="Stop recording"
               >
                 <Square size={16} />
@@ -141,7 +141,7 @@ export default function AudioRecorder({ meetingId, onRecordingComplete }: AudioR
             <>
               <button
                 onClick={handleResume}
-                className="audio-record-btn flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+                className="audio-record-btn flex items-center gap-2 rounded-lg bg-gradient-to-r from-green-500 to-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:shadow-md"
                 aria-label="Resume recording"
               >
                 <Play size={16} />
@@ -149,7 +149,7 @@ export default function AudioRecorder({ meetingId, onRecordingComplete }: AudioR
               </button>
               <button
                 onClick={handleStop}
-                className="audio-record-btn flex items-center gap-2 rounded-lg bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700"
+                className="audio-record-btn flex items-center gap-2 rounded-lg bg-gradient-to-r from-gray-600 to-gray-700 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:shadow-md"
                 aria-label="Stop recording"
               >
                 <Square size={16} />
@@ -161,10 +161,13 @@ export default function AudioRecorder({ meetingId, onRecordingComplete }: AudioR
           {state !== 'idle' && (
             <div className="flex items-center gap-2">
               {state === 'recording' && (
-                <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" aria-label="Recording indicator" />
+                <span className="relative flex h-2.5 w-2.5" aria-label="Recording indicator">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
+                </span>
               )}
               {state === 'paused' && (
-                <span className="h-2.5 w-2.5 rounded-full bg-yellow-500" aria-label="Paused indicator" />
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-500" aria-label="Paused indicator" />
               )}
               <span className="font-mono text-lg text-gray-700 dark:text-gray-300" data-testid="recording-timer">
                 {formatTime(elapsed)}
@@ -181,8 +184,8 @@ export default function AudioRecorder({ meetingId, onRecordingComplete }: AudioR
             </>
           ) : (
             <>
-              <WifiOff size={14} className="text-yellow-500" />
-              <span className="text-yellow-600 dark:text-yellow-400">Offline</span>
+              <WifiOff size={14} className="text-amber-500" />
+              <span className="text-amber-600 dark:text-amber-400">Offline</span>
             </>
           )}
         </div>

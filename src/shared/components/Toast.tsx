@@ -1,11 +1,38 @@
 import { useToast, type ToastType } from '../../contexts/ToastContext';
-import { X } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, AlertTriangle, Info } from 'lucide-react';
 
-const typeStyles: Record<ToastType, string> = {
-  success: 'bg-green-600 text-white',
-  error: 'bg-red-600 text-white',
-  warning: 'bg-yellow-500 text-white',
-  info: 'bg-blue-600 text-white',
+const typeConfig: Record<ToastType, { icon: typeof CheckCircle; borderClass: string; iconClass: string; bgClass: string }> = {
+  success: {
+    icon: CheckCircle,
+    borderClass: 'border-l-green-500',
+    iconClass: 'text-green-500',
+    bgClass: 'bg-white dark:bg-gray-800',
+  },
+  error: {
+    icon: AlertCircle,
+    borderClass: 'border-l-red-500',
+    iconClass: 'text-red-500',
+    bgClass: 'bg-white dark:bg-gray-800',
+  },
+  warning: {
+    icon: AlertTriangle,
+    borderClass: 'border-l-amber-500',
+    iconClass: 'text-amber-500',
+    bgClass: 'bg-white dark:bg-gray-800',
+  },
+  info: {
+    icon: Info,
+    borderClass: 'border-l-brand-500',
+    iconClass: 'text-brand-500',
+    bgClass: 'bg-white dark:bg-gray-800',
+  },
+};
+
+const countdownColors: Record<ToastType, string> = {
+  success: 'bg-green-500',
+  error: 'bg-red-500',
+  warning: 'bg-amber-500',
+  info: 'bg-brand-500',
 };
 
 export default function Toast() {
@@ -14,23 +41,39 @@ export default function Toast() {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
-      {toasts.map((toast) => (
-        <div
-          key={toast.id}
-          role="alert"
-          className={`flex items-center gap-2 rounded-lg px-4 py-3 shadow-lg ${typeStyles[toast.type]}`}
-        >
-          <span className="text-sm font-medium">{toast.message}</span>
-          <button
-            onClick={() => removeToast(toast.id)}
-            className="ml-2 rounded p-0.5 hover:bg-white/20"
-            aria-label="Dismiss"
+    <div className="no-print fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+      {toasts.map((toast) => {
+        const config = typeConfig[toast.type];
+        const Icon = config.icon;
+
+        return (
+          <div
+            key={toast.id}
+            role="alert"
+            className={`animate-slide-in-right flex flex-col overflow-hidden rounded-lg border border-gray-200 shadow-lg dark:border-gray-700 ${config.bgClass} border-l-4 ${config.borderClass}`}
           >
-            <X size={14} />
-          </button>
-        </div>
-      ))}
+            <div className="flex items-center gap-2.5 px-4 py-3">
+              <Icon size={18} className={`shrink-0 ${config.iconClass}`} />
+              <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                {toast.message}
+              </span>
+              <button
+                onClick={() => removeToast(toast.id)}
+                className="ml-2 shrink-0 rounded p-0.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+                aria-label="Dismiss"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="h-0.5 w-full bg-gray-100 dark:bg-gray-700">
+              <div
+                className={`h-full ${countdownColors[toast.type]}`}
+                style={{ animation: 'shrinkBar 3s linear forwards' }}
+              />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

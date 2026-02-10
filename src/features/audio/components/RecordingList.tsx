@@ -39,9 +39,11 @@ export default function RecordingList({ meetingId, autoTranscribeId, onAutoTrans
 
   if (!recordings || recordings.length === 0) {
     return (
-      <div className="mt-4 rounded-lg border border-dashed border-gray-300 p-6 text-center text-gray-400 dark:border-gray-600">
-        <Mic size={24} className="mx-auto mb-2 opacity-50" />
-        <p>No recordings yet. Click Record to start.</p>
+      <div className="mt-4 rounded-xl border border-dashed border-gray-300 p-8 text-center dark:border-gray-600">
+        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-100 to-purple-100 dark:from-brand-900/30 dark:to-purple-900/30">
+          <Mic size={20} className="text-brand-500 dark:text-brand-400" />
+        </div>
+        <p className="text-sm text-gray-500 dark:text-gray-400">No recordings yet. Click Record to start.</p>
       </div>
     );
   }
@@ -244,7 +246,7 @@ function RecordingItem({ id, meetingId, blobUrl, duration, order, createdAt, onD
     : [];
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
+    <div className="rounded-xl border-l-4 border-l-brand-500 border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:border-l-brand-400">
       <div className="flex items-center gap-3">
         <div className="flex-1">
           <div className="mb-1 flex items-center gap-2">

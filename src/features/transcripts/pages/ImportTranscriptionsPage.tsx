@@ -208,10 +208,12 @@ export default function ImportTranscriptionsPage() {
 
       {/* Empty state */}
       {!loading && !error && transcripts.length === 0 && (
-        <div className="rounded-lg border border-dashed border-gray-300 p-8 text-center dark:border-gray-600">
-          <Download size={32} className="mx-auto mb-3 text-gray-300" />
-          <p className="text-gray-500 dark:text-gray-400">
-            No completed transcripts found on AssemblyAI.
+        <div className="animate-fade-in rounded-xl border border-dashed border-gray-300 p-10 text-center dark:border-gray-600">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-100 to-purple-100 dark:from-brand-900/30 dark:to-purple-900/30">
+            <Download size={28} className="text-brand-500 dark:text-brand-400" />
+          </div>
+          <p className="font-medium text-gray-600 dark:text-gray-300">
+            No completed transcripts found
           </p>
           <p className="mt-1 text-sm text-gray-400">
             Record on your phone first, then come back here to import.
@@ -229,7 +231,7 @@ export default function ImportTranscriptionsPage() {
             return (
               <div
                 key={item.id}
-                className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"
+                className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">

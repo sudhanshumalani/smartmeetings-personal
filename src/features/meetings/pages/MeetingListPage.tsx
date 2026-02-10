@@ -9,11 +9,15 @@ import {
   ChevronRight,
   ClipboardList,
   Search,
+  CheckSquare,
+  X,
 } from 'lucide-react';
 import { db } from '../../../db/database';
 import type { Meeting, StakeholderCategory } from '../../../db/database';
 import { meetingRepository } from '../../../services/meetingRepository';
 import EmptyState from '../../../shared/components/EmptyState';
+import ConfirmDialog from '../../../shared/components/ConfirmDialog';
+import { useToast } from '../../../contexts/ToastContext';
 import MeetingCard from '../components/MeetingCard';
 import SearchBar from '../components/SearchBar';
 import FilterPanel, {
@@ -67,8 +71,22 @@ function groupByDateSection(meetings: Meeting[]): [string, Meeting[]][] {
   return [...groups.entries()];
 }
 
+function SkeletonCard() {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+      <div className="skeleton h-5 w-3/4" />
+      <div className="skeleton h-4 w-1/3" />
+      <div className="flex gap-2">
+        <div className="skeleton h-5 w-16 rounded-full" />
+        <div className="skeleton h-5 w-20 rounded-full" />
+      </div>
+    </div>
+  );
+}
+
 export default function MeetingListPage() {
   const navigate = useNavigate();
+  const { addToast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<Filters>(emptyFilters);
   const [sortBy, setSortBy] = useState<SortOption>('date');
@@ -76,6 +94,11 @@ export default function MeetingListPage() {
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
     new Set(),
   );
+
+  // Selection mode state
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const debouncedSearch = useDebounce(searchQuery, 300);
 
@@ -206,6 +229,36 @@ export default function MeetingListPage() {
     });
   }
 
+  // Selection handlers
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelectedIds(new Set(sortedMeetings.map((m) => m.id)));
+  }
+
+  function exitSelectionMode() {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }
+
+  async function handleBulkDelete() {
+    const ids = [...selectedIds];
+    await meetingRepository.softDeleteMany(ids);
+    addToast(
+      `${ids.length} meeting${ids.length !== 1 ? 's' : ''} moved to Trash`,
+      'success',
+    );
+    setShowDeleteConfirm(false);
+    exitSelectionMode();
+  }
+
   const isLoading = meetings === undefined;
   const filtersActive = hasActiveFilters(filters);
   const noMeetingsAtAll =
@@ -218,6 +271,20 @@ export default function MeetingListPage() {
     (!!debouncedSearch || filtersActive) &&
     sortedMeetings.length === 0;
 
+  function renderCards(meetingsList: Meeting[], indexOffset = 0) {
+    return meetingsList.map((meeting, i) => (
+      <MeetingCard
+        key={meeting.id}
+        meeting={meeting}
+        categories={getMeetingCategories(meeting)}
+        selectionMode={selectionMode}
+        selected={selectedIds.has(meeting.id)}
+        onSelect={toggleSelect}
+        index={indexOffset + i}
+      />
+    ));
+  }
+
   return (
     <div>
       {/* Page Header */}
@@ -227,22 +294,64 @@ export default function MeetingListPage() {
             Dashboard
           </h1>
           <div className="flex items-center gap-2">
+            {/* Selection mode toggle */}
+            {!selectionMode ? (
+              <button
+                onClick={() => setSelectionMode(true)}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+              >
+                <CheckSquare size={16} />
+                <span className="hidden sm:inline">Select</span>
+              </button>
+            ) : (
+              <button
+                onClick={exitSelectionMode}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+              >
+                <X size={16} />
+                <span className="hidden sm:inline">Cancel</span>
+              </button>
+            )}
+
             <Link
               to="/trash"
-              className="flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+              className="flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
             >
               <Trash2 size={16} />
               <span className="hidden sm:inline">Trash</span>
             </Link>
             <button
               onClick={handleNewMeeting}
-              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-brand-500 to-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:shadow-md active:scale-[0.98]"
             >
               <Plus size={16} />
               New Meeting
             </button>
           </div>
         </div>
+
+        {/* Selection action bar */}
+        {selectionMode && selectedIds.size > 0 && (
+          <div className="animate-slide-down flex items-center gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2.5 dark:border-brand-800 dark:bg-brand-900/20">
+            <span className="text-sm font-medium text-brand-700 dark:text-brand-300">
+              {selectedIds.size} selected
+            </span>
+            <button
+              onClick={selectAll}
+              className="text-sm text-brand-600 hover:underline dark:text-brand-400"
+            >
+              Select All
+            </button>
+            <div className="flex-1" />
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-700"
+            >
+              <Trash2 size={14} />
+              Delete Selected
+            </button>
+          </div>
+        )}
 
         {/* Search + Filter + Sort row */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -254,14 +363,14 @@ export default function MeetingListPage() {
               onClick={() => setFilterOpen(!filterOpen)}
               className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
                 filtersActive
-                  ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-600 dark:bg-blue-900/30 dark:text-blue-300'
-                  : 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'
+                  ? 'border-brand-300 bg-brand-50 text-brand-700 dark:border-brand-600 dark:bg-brand-900/30 dark:text-brand-300'
+                  : 'border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700'
               }`}
             >
               <Filter size={16} />
               Filter
               {filtersActive && (
-                <span className="rounded-full bg-blue-600 px-1.5 text-xs text-white">
+                <span className="rounded-full bg-brand-600 px-1.5 text-xs text-white">
                   {filters.statuses.length +
                     filters.categoryIds.length +
                     filters.stakeholderIds.length +
@@ -298,7 +407,11 @@ export default function MeetingListPage() {
 
       {/* Content */}
       {isLoading ? (
-        <div className="py-16 text-center text-gray-400">Loading...</div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
       ) : noMeetingsAtAll ? (
         <EmptyState
           icon={<ClipboardList size={48} />}
@@ -307,7 +420,7 @@ export default function MeetingListPage() {
           action={
             <button
               onClick={handleNewMeeting}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className="rounded-lg bg-gradient-to-r from-brand-500 to-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:shadow-md"
             >
               Create your first meeting
             </button>
@@ -322,13 +435,7 @@ export default function MeetingListPage() {
       ) : debouncedSearch ? (
         /* Search results: flat list */
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {sortedMeetings.map((meeting) => (
-            <MeetingCard
-              key={meeting.id}
-              meeting={meeting}
-              categories={getMeetingCategories(meeting)}
-            />
-          ))}
+          {renderCards(sortedMeetings)}
         </div>
       ) : (
         /* Grouped by date section */
@@ -337,7 +444,7 @@ export default function MeetingListPage() {
             <div key={label}>
               <button
                 onClick={() => toggleSection(label)}
-                className="mb-3 flex items-center gap-1 text-sm font-semibold text-gray-500 dark:text-gray-400"
+                className="mb-3 flex items-center gap-1 text-sm font-semibold text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               >
                 {collapsedSections.has(label) ? (
                   <ChevronRight size={16} />
@@ -351,19 +458,24 @@ export default function MeetingListPage() {
               </button>
               {!collapsedSections.has(label) && (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {sectionMeetings.map((meeting) => (
-                    <MeetingCard
-                      key={meeting.id}
-                      meeting={meeting}
-                      categories={getMeetingCategories(meeting)}
-                    />
-                  ))}
+                  {renderCards(sectionMeetings)}
                 </div>
               )}
             </div>
           ))}
         </div>
       )}
+
+      {/* Bulk delete confirmation dialog */}
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="Move to Trash"
+        message={`Move ${selectedIds.size} meeting${selectedIds.size !== 1 ? 's' : ''} to Trash? You can restore them later.`}
+        confirmLabel="Move to Trash"
+        cancelLabel="Cancel"
+        onConfirm={handleBulkDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   );
 }

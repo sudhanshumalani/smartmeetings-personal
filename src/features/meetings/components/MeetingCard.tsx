@@ -1,10 +1,10 @@
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Users } from 'lucide-react';
+import { Calendar, Users, Check } from 'lucide-react';
 import type { Meeting, StakeholderCategory } from '../../../db/database';
 
 const statusStyles: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
-  'in-progress': 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  'in-progress': 'bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300',
   completed: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
 };
 
@@ -14,20 +14,67 @@ const statusLabels: Record<string, string> = {
   completed: 'Completed',
 };
 
+const statusBorderColor: Record<string, string> = {
+  draft: 'border-l-gray-300 dark:border-l-gray-600',
+  'in-progress': 'border-l-brand-500 dark:border-l-brand-400',
+  completed: 'border-l-green-500 dark:border-l-green-400',
+};
+
 interface MeetingCardProps {
   meeting: Meeting;
   categories: StakeholderCategory[];
+  selectionMode?: boolean;
+  selected?: boolean;
+  onSelect?: (id: string) => void;
+  index?: number;
 }
 
-export default function MeetingCard({ meeting, categories }: MeetingCardProps) {
+export default function MeetingCard({
+  meeting,
+  categories,
+  selectionMode = false,
+  selected = false,
+  onSelect,
+  index = 0,
+}: MeetingCardProps) {
   const navigate = useNavigate();
+
+  function handleClick() {
+    if (selectionMode && onSelect) {
+      onSelect(meeting.id);
+    } else {
+      navigate(`/meetings/${meeting.id}`);
+    }
+  }
 
   return (
     <button
-      onClick={() => navigate(`/meetings/${meeting.id}`)}
-      className="flex w-full flex-col gap-2 rounded-lg border border-gray-200 bg-white p-4 text-left transition-shadow hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
+      onClick={handleClick}
+      className={`animate-card-entrance relative flex w-full flex-col gap-2 rounded-xl border-l-4 border border-gray-200 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-gray-700 dark:bg-gray-800 ${
+        statusBorderColor[meeting.status]
+      } ${
+        selected
+          ? 'ring-2 ring-brand-500 ring-offset-1 dark:ring-offset-gray-900'
+          : ''
+      }`}
+      style={{ animationDelay: `${index * 50}ms`, animationFillMode: 'backwards' }}
     >
-      <h3 className="truncate font-medium text-gray-900 dark:text-gray-100">
+      {/* Selection checkbox */}
+      {selectionMode && (
+        <div className="absolute right-3 top-3">
+          <div
+            className={`flex h-5 w-5 items-center justify-center rounded-md border-2 transition-colors ${
+              selected
+                ? 'border-brand-500 bg-brand-500 text-white'
+                : 'border-gray-300 dark:border-gray-600'
+            }`}
+          >
+            {selected && <Check size={12} strokeWidth={3} />}
+          </div>
+        </div>
+      )}
+
+      <h3 className="truncate pr-6 font-medium text-gray-900 dark:text-gray-100">
         {meeting.title}
       </h3>
 

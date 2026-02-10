@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, Calendar, FileText, Mic, Brain, Download, Printer } from 'lucide-react';
+import { ArrowLeft, Calendar, FileText, Mic, Brain, Download, Printer, Trash2 } from 'lucide-react';
 import type { MeetingStatus } from '../../../db/database';
 import { meetingRepository } from '../../../services/meetingRepository';
 import { tiptapJsonToPlainText } from '../../../services/tiptapUtils';
 import { exportMeeting, downloadJson } from '../../../services/exportService';
 import { useToast } from '../../../contexts/ToastContext';
 import useIsMobile from '../../../shared/hooks/useIsMobile';
+import ConfirmDialog from '../../../shared/components/ConfirmDialog';
 import StakeholderPicker from '../components/StakeholderPicker';
 import ChipInput from '../components/ChipInput';
 import NotesEditor from '../components/NotesEditor';
@@ -21,10 +22,34 @@ const statusSelectStyles: Record<string, string> = {
   draft:
     'border border-gray-200 bg-gray-50 text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300',
   'in-progress':
-    'border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+    'border border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-800 dark:bg-brand-900/30 dark:text-brand-300',
   completed:
     'border border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/30 dark:text-green-300',
 };
+
+function DetailSkeleton() {
+  return (
+    <div className="animate-fade-in space-y-6">
+      <div className="flex items-center gap-3">
+        <div className="skeleton h-10 w-10 rounded-lg" />
+        <div className="skeleton h-8 w-64" />
+        <div className="skeleton ml-auto h-8 w-24 rounded-full" />
+      </div>
+      <div className="skeleton ml-12 h-4 w-48" />
+      <div className="ml-12 space-y-3">
+        <div className="skeleton h-10 w-full" />
+        <div className="skeleton h-10 w-full" />
+        <div className="skeleton h-10 w-full" />
+      </div>
+      <div className="flex gap-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="skeleton h-10 w-20" />
+        <div className="skeleton h-10 w-32" />
+        <div className="skeleton h-10 w-20" />
+      </div>
+      <div className="skeleton h-48 w-full" />
+    </div>
+  );
+}
 
 export default function MeetingDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -34,6 +59,7 @@ export default function MeetingDetailPage() {
   const [activeTab, setActiveTab] = useState<Tab>('notes');
   const [title, setTitle] = useState('');
   const [titleLoaded, setTitleLoaded] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // undefined = loading, null = not found, Meeting = found
   const meeting = useLiveQuery(
@@ -107,13 +133,18 @@ export default function MeetingDetailPage() {
     window.print();
   }
 
+  async function handleDelete() {
+    if (!id) return;
+    await meetingRepository.softDelete(id);
+    addToast('Meeting moved to Trash', 'success');
+    navigate('/');
+  }
+
   if (!id) return null;
 
   // Loading
   if (meeting === undefined) {
-    return (
-      <div className="py-16 text-center text-gray-400">Loading...</div>
-    );
+    return <DetailSkeleton />;
   }
 
   // Not found
@@ -125,7 +156,7 @@ export default function MeetingDetailPage() {
         </h2>
         <button
           onClick={() => navigate('/')}
-          className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
+          className="mt-4 rounded-lg bg-gradient-to-r from-brand-500 to-brand-600 px-4 py-2 text-sm text-white shadow-sm hover:shadow-md"
         >
           Back to Dashboard
         </button>
@@ -145,13 +176,13 @@ export default function MeetingDetailPage() {
       ];
 
   return (
-    <div>
+    <div className="animate-fade-in">
       {/* Header */}
       <div className="mb-6">
         <div className="mb-4 flex items-center gap-3">
           <button
             onClick={() => navigate('/')}
-            className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 no-print"
+            className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300 no-print"
             aria-label="Back to dashboard"
           >
             <ArrowLeft size={20} />
@@ -188,7 +219,7 @@ export default function MeetingDetailPage() {
             <div className="flex items-center gap-1 no-print">
               <button
                 onClick={handleExportJson}
-                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
                 aria-label="Export as JSON"
                 title="Export as JSON"
               >
@@ -196,11 +227,19 @@ export default function MeetingDetailPage() {
               </button>
               <button
                 onClick={handlePrint}
-                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
                 aria-label="Print / Export as PDF"
                 title="Print / Export as PDF"
               >
                 <Printer size={18} />
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                aria-label="Delete meeting"
+                title="Move to Trash"
+              >
+                <Trash2 size={18} />
               </button>
             </div>
           )}
@@ -262,7 +301,7 @@ export default function MeetingDetailPage() {
             onClick={() => setActiveTab(tab.key)}
             className={`flex items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
               activeTab === tab.key
-                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                ? 'border-brand-500 text-brand-600 dark:text-brand-400'
                 : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400'
             }`}
           >
@@ -288,6 +327,17 @@ export default function MeetingDetailPage() {
 
       {/* Print View — hidden on screen, shown when printing */}
       <MeetingPrintView meeting={meeting} />
+
+      {/* Delete confirmation dialog */}
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="Move to Trash"
+        message="Move this meeting to Trash? You can restore it later from the Trash page."
+        confirmLabel="Move to Trash"
+        cancelLabel="Cancel"
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   );
 }

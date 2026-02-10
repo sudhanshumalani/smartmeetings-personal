@@ -49,6 +49,26 @@ export class MeetingRepository {
     await this.queueSync('delete', id);
   }
 
+  async softDeleteMany(ids: string[]): Promise<void> {
+    const now = new Date();
+    await db.transaction('rw', [db.meetings, db.syncQueue], async () => {
+      for (const id of ids) {
+        await db.meetings.update(id, { deletedAt: now, updatedAt: now });
+        const record = await db.meetings.get(id);
+        await db.syncQueue.add({
+          id: crypto.randomUUID(),
+          entity: 'meeting',
+          entityId: id,
+          operation: 'delete',
+          payload: JSON.stringify(record),
+          createdAt: now,
+          syncedAt: null,
+          error: null,
+        });
+      }
+    });
+  }
+
   async restore(id: string): Promise<void> {
     await db.meetings.update(id, { deletedAt: null, updatedAt: new Date() });
     await this.queueSync('update', id);
