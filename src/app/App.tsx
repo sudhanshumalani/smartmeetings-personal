@@ -14,9 +14,13 @@ import StakeholderListPage from '../features/stakeholders/pages/StakeholderListP
 import StakeholderDetailPage from '../features/stakeholders/pages/StakeholderDetailPage';
 import SettingsPage from '../features/settings/pages/SettingsPage';
 import TrashPage from '../features/settings/pages/TrashPage';
+import ImportTranscriptionsPage from '../features/transcripts/pages/ImportTranscriptionsPage';
+import MobileApp from '../features/mobile/MobileApp';
+import useIsMobile from '../shared/hooks/useIsMobile';
 
 export default function App() {
   const [ready, setReady] = useState(false);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     async function init() {
@@ -35,6 +39,20 @@ export default function App() {
     );
   }
 
+  // iOS devices get the dedicated mobile recording UI
+  if (isMobile) {
+    return (
+      <ThemeProvider>
+        <ToastProvider>
+          <OnlineProvider>
+            <MobileApp />
+            <Toast />
+          </OnlineProvider>
+        </ToastProvider>
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider>
       <ToastProvider>
@@ -48,6 +66,7 @@ export default function App() {
                 <Route path="stakeholders/:id" element={<StakeholderDetailPage />} />
                 <Route path="settings" element={<SettingsPage />} />
                 <Route path="trash" element={<TrashPage />} />
+                <Route path="import" element={<ImportTranscriptionsPage />} />
               </Route>
             </Routes>
           </BrowserRouter>

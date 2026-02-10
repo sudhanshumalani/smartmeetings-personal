@@ -27,6 +27,38 @@ export interface ProgressCallback {
   onUploadProgress: (percent: number) => void;
 }
 
+export interface TranscriptListItem {
+  id: string;
+  status: string;
+  audio_url: string;
+  text: string | null;
+  created: string;
+  audio_duration: number | null;
+}
+
+export interface TranscriptListResponse {
+  page_details: {
+    limit: number;
+    result_count: number;
+    current_url: string;
+    prev_url: string | null;
+    next_url: string | null;
+    before_id: string | null;
+    after_id: string | null;
+  };
+  transcripts: TranscriptListItem[];
+}
+
+export interface TranscriptDetail {
+  id: string;
+  status: string;
+  text: string;
+  utterances: AssemblyAIUtterance[] | null;
+  audio_duration: number;
+  confidence: number;
+  created: string;
+}
+
 const ASSEMBLYAI_BASE = 'https://api.assemblyai.com/v2';
 const MAX_POLL_ATTEMPTS = 180; // 3 minutes at 1-second intervals
 
@@ -64,7 +96,7 @@ export class AssemblyAIService {
     return result;
   }
 
-  private async uploadAudio(blob: Blob, onProgress: (percent: number) => void): Promise<string> {
+  async uploadAudio(blob: Blob, onProgress: (percent: number) => void): Promise<string> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `${ASSEMBLYAI_BASE}/upload`);
@@ -94,7 +126,7 @@ export class AssemblyAIService {
     });
   }
 
-  private async requestTranscription(audioUrl: string): Promise<string> {
+  async requestTranscription(audioUrl: string): Promise<string> {
     const response = await fetch(`${ASSEMBLYAI_BASE}/transcript`, {
       method: 'POST',
       headers: {
@@ -163,6 +195,51 @@ export class AssemblyAIService {
     }
 
     throw new Error('Transcription timed out after 3 minutes');
+  }
+
+  /** List transcripts from AssemblyAI. Optionally filter by status and paginate. */
+  async listTranscripts(
+    status?: string,
+    limit: number = 20,
+    beforeId?: string,
+  ): Promise<TranscriptListResponse> {
+    if (!this.apiKey) {
+      throw new Error('AssemblyAI API key not initialized. Call initialize() first.');
+    }
+
+    const params = new URLSearchParams();
+    if (status) params.set('status', status);
+    params.set('limit', String(limit));
+    if (beforeId) params.set('before_id', beforeId);
+
+    const response = await fetch(
+      `${ASSEMBLYAI_BASE}/transcript?${params.toString()}`,
+      { headers: { 'authorization': this.apiKey } },
+    );
+
+    if (!response.ok) {
+      throw new Error(`List transcripts failed: ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  /** Fetch full transcript detail including utterances. */
+  async getTranscriptDetail(id: string): Promise<TranscriptDetail> {
+    if (!this.apiKey) {
+      throw new Error('AssemblyAI API key not initialized. Call initialize() first.');
+    }
+
+    const response = await fetch(
+      `${ASSEMBLYAI_BASE}/transcript/${id}`,
+      { headers: { 'authorization': this.apiKey } },
+    );
+
+    if (!response.ok) {
+      throw new Error(`Get transcript detail failed: ${response.status}`);
+    }
+
+    return response.json();
   }
 }
 

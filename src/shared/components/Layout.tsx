@@ -5,6 +5,7 @@ import {
   Users,
   Settings,
   Trash2,
+  Download,
   Sun,
   Moon,
   Monitor,
@@ -24,6 +25,7 @@ import OfflineIndicator from './OfflineIndicator';
 const navLinks = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/stakeholders', label: 'Stakeholders', icon: Users },
+  { to: '/import', label: 'Import', icon: Download },
   { to: '/settings', label: 'Settings', icon: Settings },
   { to: '/trash', label: 'Trash', icon: Trash2 },
 ];
