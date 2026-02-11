@@ -231,7 +231,7 @@ export default function MobileApp() {
   // Settings overlay
   if (state === 'setup' || showSettings) {
     return (
-      <div className="flex min-h-dvh flex-col items-center justify-center bg-gradient-to-br from-brand-50 via-white to-purple-50 px-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] dark:from-gray-900 dark:via-gray-900 dark:to-brand-900/20">
+      <div className="flex min-h-dvh flex-col items-center justify-center overflow-x-hidden bg-gradient-to-br from-brand-50 via-white to-purple-50 px-4 pt-[env(safe-area-inset-top)] pr-[max(1rem,env(safe-area-inset-right))] pb-[env(safe-area-inset-bottom)] pl-[max(1rem,env(safe-area-inset-left))] dark:from-gray-900 dark:via-gray-900 dark:to-brand-900/20">
         <div className="w-full max-w-sm animate-fade-in space-y-6">
           <div className="text-center">
             <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500 to-purple-500 shadow-lg">
@@ -286,7 +286,7 @@ export default function MobileApp() {
   }
 
   return (
-    <div className="relative flex min-h-dvh flex-col items-center justify-center bg-gradient-to-br from-brand-50 via-white to-purple-50 px-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] dark:from-gray-900 dark:via-gray-900 dark:to-brand-900/20">
+    <div className="relative flex min-h-dvh flex-col items-center justify-center overflow-x-hidden bg-gradient-to-br from-brand-50 via-white to-purple-50 px-4 pt-[env(safe-area-inset-top)] pr-[max(1rem,env(safe-area-inset-right))] pb-[env(safe-area-inset-bottom)] pl-[max(1rem,env(safe-area-inset-left))] dark:from-gray-900 dark:via-gray-900 dark:to-brand-900/20">
       {/* Settings gear — positioned within safe area */}
       <button
         onClick={() => setShowSettings(true)}
@@ -477,8 +477,8 @@ export default function MobileApp() {
                 onClick={handleDownloadAudio}
                 className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 px-6 py-3 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
               >
-                <Download size={14} />
-                Save Audio to Device ({(audioBlobRef.current.size / 1024 / 1024).toFixed(1)} MB)
+                <Download size={14} className="shrink-0" />
+                <span className="truncate">Save Audio to Device ({(audioBlobRef.current.size / 1024 / 1024).toFixed(1)} MB)</span>
               </button>
             )}
           </div>

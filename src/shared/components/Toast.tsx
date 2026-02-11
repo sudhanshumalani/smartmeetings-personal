@@ -41,7 +41,7 @@ export default function Toast() {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="no-print fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+    <div className="no-print fixed bottom-4 left-4 right-4 z-50 flex flex-col items-end gap-2 overflow-hidden">
       {toasts.map((toast) => {
         const config = typeConfig[toast.type];
         const Icon = config.icon;
@@ -50,7 +50,7 @@ export default function Toast() {
           <div
             key={toast.id}
             role="alert"
-            className={`animate-slide-in-right flex flex-col overflow-hidden rounded-lg border border-gray-200 shadow-lg dark:border-gray-700 ${config.bgClass} border-l-4 ${config.borderClass}`}
+            className={`animate-slide-in-right flex w-full max-w-sm flex-col overflow-hidden rounded-lg border border-gray-200 shadow-lg dark:border-gray-700 ${config.bgClass} border-l-4 ${config.borderClass}`}
           >
             <div className="flex items-center gap-2.5 px-4 py-3">
               <Icon size={18} className={`shrink-0 ${config.iconClass}`} />

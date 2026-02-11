@@ -97,12 +97,15 @@
   background-clip: text;
 }
 
-/* === iOS Safe Area Insets === */
-body {
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
+/* === Prevent horizontal overflow globally === */
+html, body {
+  overflow-x: hidden;
+  width: 100%;
+}
+
+#root {
+  overflow-x: hidden;
+  width: 100%;
 }
 
 /* === Mobile Touch Targets === */

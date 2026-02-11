@@ -51,7 +51,7 @@ export default function PWAUpdatePrompt() {
 
   return (
     <div
-      className="fixed bottom-4 left-4 z-50 flex items-center gap-3 rounded-lg bg-blue-600 px-4 py-3 text-white shadow-lg"
+      className="fixed bottom-4 left-4 right-4 z-50 flex items-center gap-3 rounded-lg bg-blue-600 px-4 py-3 text-white shadow-lg sm:right-auto"
       role="alert"
       data-testid="pwa-update-prompt"
     >
