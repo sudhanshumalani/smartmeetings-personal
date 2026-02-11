@@ -26,7 +26,7 @@ import FilterPanel, {
   type Filters,
 } from '../components/FilterPanel';
 
-type SortOption = 'date' | 'title' | 'lastModified';
+type SortOption = 'date' | 'title' | 'lastModified' | 'stakeholder';
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -193,15 +193,27 @@ export default function MeetingListPage() {
           return a.title.localeCompare(b.title);
         case 'lastModified':
           return b.updatedAt.getTime() - a.updatedAt.getTime();
+        case 'stakeholder': {
+          const nameA = a.stakeholderIds.length
+            ? (stakeholderMap.get(a.stakeholderIds[0])?.name ?? '')
+            : '';
+          const nameB = b.stakeholderIds.length
+            ? (stakeholderMap.get(b.stakeholderIds[0])?.name ?? '')
+            : '';
+          // Meetings without stakeholders go to the end
+          if (!nameA && nameB) return 1;
+          if (nameA && !nameB) return -1;
+          return nameA.localeCompare(nameB);
+        }
       }
     });
-  }, [filteredMeetings, sortBy]);
+  }, [filteredMeetings, sortBy, stakeholderMap]);
 
-  // Group by date sections (only when not searching)
+  // Group by date sections (only when sorting by date and not searching)
   const groupedMeetings = useMemo(() => {
-    if (debouncedSearch) return null;
+    if (debouncedSearch || sortBy !== 'date') return null;
     return groupByDateSection(sortedMeetings);
-  }, [sortedMeetings, debouncedSearch]);
+  }, [sortedMeetings, debouncedSearch, sortBy]);
 
   // Get categories for a meeting
   function getMeetingCategories(meeting: Meeting): StakeholderCategory[] {
@@ -389,6 +401,7 @@ export default function MeetingListPage() {
               <option value="date">Sort by Date</option>
               <option value="title">Sort by Title</option>
               <option value="lastModified">Sort by Last Modified</option>
+              <option value="stakeholder">Sort by Stakeholder</option>
             </select>
           </div>
         </div>
@@ -432,8 +445,8 @@ export default function MeetingListPage() {
           title="No results found"
           description="Try adjusting your search or filters."
         />
-      ) : debouncedSearch ? (
-        /* Search results: flat list */
+      ) : !groupedMeetings ? (
+        /* Flat list: search results or non-date sort */
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {renderCards(sortedMeetings)}
         </div>
