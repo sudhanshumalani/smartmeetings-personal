@@ -26,3 +26,6 @@ tsconfig.tsbuildinfo
 
 # Logs
 *.log
+
+# Cloudflare Worker config (contains D1 database ID)
+worker/wrangler.toml
