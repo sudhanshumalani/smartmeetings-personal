@@ -58,7 +58,11 @@ const ANALYSIS_PROMPT = `You are an expert meeting notes assistant. Create compr
   "nextSteps": "2-3 sentences on immediate actions and when team reconnects"
 }
 
-**Critical:** Capture EVERYTHING important. Include specific names, numbers, quotes. Group by themes. Don't over-summarize.
+**Critical rules:**
+- Be CONCISE. Each keyPoint should be 1 sentence. Each theme should have 3-5 keyPoints max.
+- Limit to 5-8 themes. Merge related topics.
+- Include specific names, numbers, dates when mentioned.
+- Skip filler, small talk, and off-topic conversation.
 
 Return ONLY valid JSON, no markdown code blocks.`;
 
@@ -121,15 +125,22 @@ export async function prepareAnalysisText(
       .join('\n');
   }
 
+  let result: string;
   if (hasTranscripts && hasNotes) {
-    return `[Transcript]\n${transcriptText}\n\n---\n\n[Notes]\n${notesPlainText.trim()}`;
+    result = `[Transcript]\n${transcriptText}\n\n---\n\n[Notes]\n${notesPlainText.trim()}`;
+  } else if (hasTranscripts) {
+    result = transcriptText;
+  } else {
+    result = notesPlainText.trim();
   }
 
-  if (hasTranscripts) {
-    return transcriptText;
+  // Cap input at ~60,000 chars (~15,000 tokens) to keep API calls fast
+  const MAX_INPUT_CHARS = 60_000;
+  if (result.length > MAX_INPUT_CHARS) {
+    result = result.slice(0, MAX_INPUT_CHARS) + '\n\n[Content truncated for length]';
   }
 
-  return notesPlainText.trim();
+  return result;
 }
 
 // --- Service ---
@@ -163,7 +174,7 @@ export class ClaudeService {
 
     const response = await this.client.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 8192,
+      max_tokens: 12288,
       temperature: 0.1,
       messages: [{ role: 'user', content: prompt }],
     });
