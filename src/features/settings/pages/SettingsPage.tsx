@@ -88,6 +88,7 @@ export default function SettingsPage() {
   const [cloudTesting, setCloudTesting] = useState(false);
   const [cloudConfigured, setCloudConfigured] = useState(false);
   const [cloudRecovering, setCloudRecovering] = useState(false);
+  const [cloudPushingAll, setCloudPushingAll] = useState(false);
 
   // Storage
   const [storageUsed, setStorageUsed] = useState(0);
@@ -301,6 +302,21 @@ export default function SettingsPage() {
       addToast(`Recovery failed: ${(err as Error).message}`, 'error');
     }
     setCloudRecovering(false);
+  }
+
+  async function handlePushAllToCloud() {
+    setCloudPushingAll(true);
+    try {
+      const result = await syncService.pushAllData();
+      if (result.failed === 0) {
+        addToast(`Pushed ${result.synced} records to cloud`, 'success');
+      } else {
+        addToast(`Pushed ${result.synced}, ${result.failed} failed`, 'error');
+      }
+    } catch (err) {
+      addToast(`Push failed: ${(err as Error).message}`, 'error');
+    }
+    setCloudPushingAll(false);
   }
 
   // --- Export/Import handlers ---
@@ -741,6 +757,18 @@ export default function SettingsPage() {
                   <Server size={14} />
                 )}
                 Test Connection
+              </button>
+              <button
+                onClick={handlePushAllToCloud}
+                disabled={cloudPushingAll || !cloudConfigured || !isOnline}
+                className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
+              >
+                {cloudPushingAll ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Upload size={14} />
+                )}
+                Push All Data
               </button>
               <button
                 onClick={handleRecoverFromCloud}
