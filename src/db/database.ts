@@ -140,6 +140,8 @@ export interface AppSettings {
   assemblyaiApiKey: string;
   theme: ThemeMode;
   googleClientId: string;
+  cloudBackupUrl: string;
+  cloudBackupToken: string;
   encryptionKeyMaterial: string;
   createdAt: Date;
   updatedAt: Date;
@@ -185,6 +187,23 @@ export class SmartMeetingsDB extends Dexie {
       appSettings: 'id',
       syncQueue: 'id, entity, entityId, createdAt, syncedAt',
     });
+
+    this.version(2).stores({
+      meetings: 'id, date, status, *tags, *stakeholderIds, createdAt, updatedAt, deletedAt',
+      stakeholders: 'id, name, *categoryIds, createdAt, updatedAt, deletedAt',
+      stakeholderCategories: 'id, name, createdAt, deletedAt',
+      audioRecordings: 'id, meetingId, order, createdAt, updatedAt, deletedAt',
+      audioChunkBuffers: 'id, sessionId, meetingId, chunkIndex',
+      transcripts: 'id, meetingId, audioRecordingId, createdAt, updatedAt, deletedAt',
+      meetingAnalyses: 'id, meetingId, createdAt, deletedAt',
+      appSettings: 'id',
+      syncQueue: 'id, entity, entityId, createdAt, syncedAt',
+    }).upgrade(tx => {
+      return tx.table('appSettings').toCollection().modify(s => {
+        s.cloudBackupUrl = s.cloudBackupUrl ?? '';
+        s.cloudBackupToken = s.cloudBackupToken ?? '';
+      });
+    });
   }
 }
 
@@ -200,6 +219,8 @@ export async function initializeDatabase(): Promise<void> {
       assemblyaiApiKey: '',
       theme: 'system',
       googleClientId: '',
+      cloudBackupUrl: '',
+      cloudBackupToken: '',
       encryptionKeyMaterial: '',
       createdAt: new Date(),
       updatedAt: new Date(),

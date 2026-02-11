@@ -16,6 +16,7 @@ import {
   LogIn,
   LogOut,
   Palette,
+  Server,
 } from 'lucide-react';
 import {
   getClaudeApiKey,
@@ -24,6 +25,10 @@ import {
   saveAssemblyAiApiKey,
   getGoogleClientId,
   saveGoogleClientId,
+  getCloudBackupUrl,
+  saveCloudBackupUrl,
+  getCloudBackupToken,
+  saveCloudBackupToken,
 } from '../../../services/settingsService';
 import { googleDriveService } from '../../../services/googleDriveService';
 import { syncService } from '../../../services/syncService';
@@ -73,6 +78,17 @@ export default function SettingsPage() {
   const [testingConnection, setTestingConnection] = useState(false);
   const [restoring, setRestoring] = useState(false);
 
+  // Cloud Sync
+  const [cloudUrl, setCloudUrl] = useState('');
+  const [cloudUrlSaving, setCloudUrlSaving] = useState(false);
+  const [cloudToken, setCloudToken] = useState('');
+  const [cloudTokenSet, setCloudTokenSet] = useState(false);
+  const [showCloudToken, setShowCloudToken] = useState(false);
+  const [cloudTokenSaving, setCloudTokenSaving] = useState(false);
+  const [cloudTesting, setCloudTesting] = useState(false);
+  const [cloudConfigured, setCloudConfigured] = useState(false);
+  const [cloudRecovering, setCloudRecovering] = useState(false);
+
   // Storage
   const [storageUsed, setStorageUsed] = useState(0);
   const [storageQuota, setStorageQuota] = useState(0);
@@ -94,6 +110,12 @@ export default function SettingsPage() {
 
         const clientId = await getGoogleClientId();
         setGoogleClientIdState(clientId);
+
+        const savedCloudUrl = await getCloudBackupUrl();
+        setCloudUrl(savedCloudUrl);
+        const savedCloudToken = await getCloudBackupToken();
+        setCloudTokenSet(!!savedCloudToken);
+        setCloudConfigured(!!savedCloudUrl && !!savedCloudToken);
 
         setDriveConnected(googleDriveService.isSignedIn());
       } catch {
@@ -205,15 +227,80 @@ export default function SettingsPage() {
   async function handleRestoreFromDrive() {
     setRestoring(true);
     try {
-      const result = await syncService.pullData();
-      addToast(
-        `Restored ${result.imported} records, skipped ${result.skipped} (older)`,
-        'success',
-      );
+      const data = await googleDriveService.downloadBackup();
+      if (data) {
+        const result = await importData(data);
+        addToast(
+          `Restored ${result.imported} records, skipped ${result.skipped} (older)`,
+          'success',
+        );
+      } else {
+        addToast('No backup found on Google Drive', 'warning');
+      }
     } catch (err) {
       addToast(`Restore failed: ${(err as Error).message}`, 'error');
     }
     setRestoring(false);
+  }
+
+  // --- Cloud Sync handlers ---
+
+  async function handleSaveCloudUrl() {
+    setCloudUrlSaving(true);
+    try {
+      await saveCloudBackupUrl(cloudUrl.trim());
+      const hasToken = await getCloudBackupToken();
+      setCloudConfigured(!!cloudUrl.trim() && !!hasToken);
+      addToast('Cloud Sync URL saved', 'success');
+    } catch {
+      addToast('Failed to save Cloud Sync URL', 'error');
+    }
+    setCloudUrlSaving(false);
+  }
+
+  async function handleSaveCloudToken() {
+    setCloudTokenSaving(true);
+    try {
+      await saveCloudBackupToken(cloudToken);
+      setCloudTokenSet(!!cloudToken);
+      const savedUrl = await getCloudBackupUrl();
+      setCloudConfigured(!!savedUrl && !!cloudToken);
+      setCloudToken('');
+      setShowCloudToken(false);
+      addToast(cloudToken ? 'Sync token saved' : 'Sync token removed', 'success');
+    } catch {
+      addToast('Failed to save sync token', 'error');
+    }
+    setCloudTokenSaving(false);
+  }
+
+  async function handleTestCloudConnection() {
+    setCloudTesting(true);
+    try {
+      const result = await syncService.testConnection();
+      const total = Object.values(result.counts).reduce((a, b) => a + b, 0);
+      const lastUpdated = result.lastUpdated
+        ? new Date(result.lastUpdated).toLocaleString()
+        : 'never';
+      addToast(`Connection OK. ${total} records in cloud. Last updated: ${lastUpdated}`, 'success');
+    } catch (err) {
+      addToast(`Connection failed: ${(err as Error).message}`, 'error');
+    }
+    setCloudTesting(false);
+  }
+
+  async function handleRecoverFromCloud() {
+    setCloudRecovering(true);
+    try {
+      const result = await syncService.pullData();
+      addToast(
+        `Recovered ${result.imported} records, skipped ${result.skipped} (older)`,
+        'success',
+      );
+    } catch (err) {
+      addToast(`Recovery failed: ${(err as Error).message}`, 'error');
+    }
+    setCloudRecovering(false);
   }
 
   // --- Export/Import handlers ---
@@ -539,6 +626,138 @@ export default function SettingsPage() {
           </div>
         </section>
 
+        {/* --- Cloud Sync --- */}
+        <section className="overflow-hidden rounded-xl bg-white shadow-sm transition-shadow hover:shadow-md dark:bg-gray-800">
+          <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 dark:border-gray-700">
+            <SectionIcon icon={Server} color="bg-gradient-to-br from-indigo-500 to-violet-500" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              Cloud Sync
+            </h2>
+          </div>
+          <div className="space-y-3 px-5 py-4">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Enter your Cloudflare Worker URL and token to sync meetings across devices.
+            </p>
+
+            {/* Worker URL */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Worker URL
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={cloudUrl}
+                  onChange={(e) => setCloudUrl(e.target.value)}
+                  placeholder="https://smartmeetings-sync.yourname.workers.dev"
+                  className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm transition-colors focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:focus:bg-gray-700"
+                  aria-label="Cloud Sync Worker URL"
+                />
+                <button
+                  onClick={handleSaveCloudUrl}
+                  disabled={cloudUrlSaving}
+                  className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
+                >
+                  {cloudUrlSaving ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Check size={14} />
+                  )}
+                  Save
+                </button>
+              </div>
+            </div>
+
+            {/* Sync Token */}
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Sync Token
+                </label>
+                <span
+                  className={`text-xs font-medium ${
+                    cloudTokenSet
+                      ? 'text-green-600 dark:text-green-400'
+                      : 'text-gray-400'
+                  }`}
+                >
+                  {cloudTokenSet ? 'Configured' : 'Not set'}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type={showCloudToken ? 'text' : 'password'}
+                    value={cloudToken}
+                    onChange={(e) => setCloudToken(e.target.value)}
+                    placeholder={cloudTokenSet ? '••••••••••••' : 'Enter sync token'}
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 pr-10 text-sm transition-colors focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:focus:bg-gray-700"
+                    aria-label="Cloud Sync Token"
+                  />
+                  <button
+                    onClick={() => setShowCloudToken(!showCloudToken)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    aria-label={showCloudToken ? 'Hide token' : 'Show token'}
+                    type="button"
+                  >
+                    {showCloudToken ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                <button
+                  onClick={handleSaveCloudToken}
+                  disabled={cloudTokenSaving}
+                  className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
+                >
+                  {cloudTokenSaving ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Check size={14} />
+                  )}
+                  Save
+                </button>
+              </div>
+            </div>
+
+            {/* Status indicator */}
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-flex h-2 w-2 rounded-full ${cloudConfigured ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+              />
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                {cloudConfigured ? 'Cloud sync configured' : 'Not configured'}
+              </span>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={handleTestCloudConnection}
+                disabled={cloudTesting || !cloudConfigured || !isOnline}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+              >
+                {cloudTesting ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Server size={14} />
+                )}
+                Test Connection
+              </button>
+              <button
+                onClick={handleRecoverFromCloud}
+                disabled={cloudRecovering || !cloudConfigured || !isOnline}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+              >
+                {cloudRecovering ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Download size={14} />
+                )}
+                Recover from Cloud
+              </button>
+            </div>
+          </div>
+        </section>
+
         {/* --- Data Management (desktop only) --- */}
         {!isMobile && (
           <section className="overflow-hidden rounded-xl bg-white shadow-sm transition-shadow hover:shadow-md dark:bg-gray-800">
@@ -612,8 +831,8 @@ export default function SettingsPage() {
               Intelligent meeting notes with AI-powered analysis
             </p>
             <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
-              All data is stored locally on your device. API keys are encrypted at rest.
-              Google Drive backup is optional and manually triggered.
+              All data is stored locally on your device. API keys and tokens are encrypted at rest.
+              Cloud sync and Google Drive backup are optional and manually triggered.
             </p>
           </div>
         </section>

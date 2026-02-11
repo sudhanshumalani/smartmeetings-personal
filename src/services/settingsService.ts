@@ -11,6 +11,8 @@ export async function initialize(): Promise<void> {
       assemblyaiApiKey: '',
       theme: 'system',
       googleClientId: '',
+      cloudBackupUrl: '',
+      cloudBackupToken: '',
       encryptionKeyMaterial: '',
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -79,4 +81,34 @@ export async function saveGoogleClientId(clientId: string): Promise<void> {
 export async function getGoogleClientId(): Promise<string> {
   const settings = await getSettings();
   return settings.googleClientId || '';
+}
+
+/** Stores the Cloud Backup Worker URL (plain text). */
+export async function saveCloudBackupUrl(url: string): Promise<void> {
+  await db.appSettings.update('default', {
+    cloudBackupUrl: url,
+    updatedAt: new Date(),
+  });
+}
+
+/** Returns the stored Cloud Backup Worker URL. */
+export async function getCloudBackupUrl(): Promise<string> {
+  const settings = await getSettings();
+  return settings.cloudBackupUrl || '';
+}
+
+/** Encrypts and stores the Cloud Backup sync token. */
+export async function saveCloudBackupToken(token: string): Promise<void> {
+  const encrypted = token ? await encrypt(token) : '';
+  await db.appSettings.update('default', {
+    cloudBackupToken: encrypted,
+    updatedAt: new Date(),
+  });
+}
+
+/** Decrypts and returns the Cloud Backup sync token. Returns empty string if not set. */
+export async function getCloudBackupToken(): Promise<string> {
+  const settings = await getSettings();
+  if (!settings.cloudBackupToken) return '';
+  return decrypt(settings.cloudBackupToken);
 }

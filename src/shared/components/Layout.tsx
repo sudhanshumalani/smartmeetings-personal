@@ -110,7 +110,7 @@ function SyncButton() {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sync failed';
       if (message.toLowerCase().includes('not configured')) {
-        addToast('Sign in to Google Drive in Settings', 'warning');
+        addToast('Set up Cloud Sync in Settings', 'warning');
       } else {
         addToast(message, 'error');
       }
