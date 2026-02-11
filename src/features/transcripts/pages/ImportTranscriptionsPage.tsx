@@ -43,7 +43,7 @@ export default function ImportTranscriptionsPage() {
       setError(null);
 
       await assemblyaiService.initialize();
-      const result = await assemblyaiService.listTranscripts('completed', 20, beforeId);
+      const result = await assemblyaiService.listTranscripts('completed', 200, beforeId);
 
       if (beforeId) {
         setTranscripts((prev) => [...prev, ...result.transcripts]);
