@@ -107,11 +107,11 @@ body {
 
 /* === Mobile Touch Targets === */
 @media (max-width: 768px) {
-  /* Ensure minimum 44px touch targets on mobile */
-  button,
-  a,
-  select,
-  [role="button"] {
+  /* Ensure minimum 44px touch targets on mobile (scoped to main content to avoid header overflow) */
+  main button,
+  main a,
+  main select,
+  main [role="button"] {
     min-height: 44px;
     min-width: 44px;
   }

@@ -43,7 +43,7 @@ import {
   downloadJson,
   type ExportData,
 } from '../../../services/exportService';
-import CategoryManager from '../../stakeholders/components/CategoryManager';
+
 
 function SectionIcon({ icon: Icon, color }: { icon: typeof Key; color: string }) {
   return (
@@ -412,7 +412,7 @@ export default function SettingsPage() {
                   {claudeKeySet ? 'Configured' : 'Not set'}
                 </span>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <div className="relative flex-1">
                   <input
                     type={showClaudeKey ? 'text' : 'password'}
@@ -434,7 +434,7 @@ export default function SettingsPage() {
                 <button
                   onClick={handleSaveClaudeKey}
                   disabled={claudeSaving}
-                  className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
+                  className="flex w-full items-center justify-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50 sm:w-auto"
                 >
                   {claudeSaving ? (
                     <Loader2 size={14} className="animate-spin" />
@@ -463,7 +463,7 @@ export default function SettingsPage() {
                   {assemblyKeySet ? 'Configured' : 'Not set'}
                 </span>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <div className="relative flex-1">
                   <input
                     type={showAssemblyKey ? 'text' : 'password'}
@@ -485,7 +485,7 @@ export default function SettingsPage() {
                 <button
                   onClick={handleSaveAssemblyKey}
                   disabled={assemblySaving}
-                  className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
+                  className="flex w-full items-center justify-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50 sm:w-auto"
                 >
                   {assemblySaving ? (
                     <Loader2 size={14} className="animate-spin" />
@@ -528,18 +528,6 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* --- Categories --- */}
-        <section className="overflow-hidden rounded-xl bg-white shadow-sm transition-shadow hover:shadow-md dark:bg-gray-800">
-          <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 dark:border-gray-700">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              Stakeholder Categories
-            </h2>
-          </div>
-          <div className="px-5 py-4">
-            <CategoryManager />
-          </div>
-        </section>
-
         {/* --- Google Drive Backup --- */}
         <section className="overflow-hidden rounded-xl bg-white shadow-sm transition-shadow hover:shadow-md dark:bg-gray-800">
           <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 dark:border-gray-700">
@@ -553,7 +541,7 @@ export default function SettingsPage() {
               <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Google Client ID
               </label>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <input
                   type="text"
                   value={googleClientId}
@@ -565,7 +553,7 @@ export default function SettingsPage() {
                 <button
                   onClick={handleSaveGoogleClientId}
                   disabled={googleClientIdSaving}
-                  className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
+                  className="flex w-full items-center justify-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50 sm:w-auto"
                 >
                   {googleClientIdSaving ? (
                     <Loader2 size={14} className="animate-spin" />
@@ -660,7 +648,7 @@ export default function SettingsPage() {
               <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Worker URL
               </label>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <input
                   type="text"
                   value={cloudUrl}
@@ -672,7 +660,7 @@ export default function SettingsPage() {
                 <button
                   onClick={handleSaveCloudUrl}
                   disabled={cloudUrlSaving}
-                  className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
+                  className="flex w-full items-center justify-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50 sm:w-auto"
                 >
                   {cloudUrlSaving ? (
                     <Loader2 size={14} className="animate-spin" />
@@ -700,7 +688,7 @@ export default function SettingsPage() {
                   {cloudTokenSet ? 'Configured' : 'Not set'}
                 </span>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <div className="relative flex-1">
                   <input
                     type={showCloudToken ? 'text' : 'password'}
@@ -722,7 +710,7 @@ export default function SettingsPage() {
                 <button
                   onClick={handleSaveCloudToken}
                   disabled={cloudTokenSaving}
-                  className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
+                  className="flex w-full items-center justify-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50 sm:w-auto"
                 >
                   {cloudTokenSaving ? (
                     <Loader2 size={14} className="animate-spin" />

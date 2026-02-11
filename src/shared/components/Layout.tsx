@@ -153,13 +153,13 @@ export default function Layout() {
 
       {/* Top Nav Bar — Glassmorphism */}
       <header className="sticky top-0 z-40 border-b border-gray-200/60 bg-white/80 backdrop-blur-xl dark:border-gray-700/60 dark:bg-gray-800/80">
-        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-3 sm:px-4">
           {/* Logo + App Name */}
           <NavLink to="/" className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-purple-500 shadow-sm">
               <Sparkles size={16} className="text-white" />
             </div>
-            <span className="text-lg font-bold gradient-text">
+            <span className="text-base font-bold gradient-text sm:text-lg">
               SmartMeetings
             </span>
           </NavLink>
@@ -186,7 +186,7 @@ export default function Layout() {
           </nav>
 
           {/* Right side: controls */}
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-center gap-0 sm:gap-0.5">
             <ThemeToggle />
             <OnlineIndicator />
             <SyncButton />
