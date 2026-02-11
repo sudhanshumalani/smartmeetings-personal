@@ -162,8 +162,9 @@ export class ClaudeService {
     const prompt = ANALYSIS_PROMPT.replace('${text}', text);
 
     const response = await this.client.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 16384,
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 4096,
+      temperature: 0.1,
       messages: [{ role: 'user', content: prompt }],
     });
 
