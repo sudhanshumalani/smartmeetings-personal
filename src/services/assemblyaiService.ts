@@ -101,6 +101,8 @@ export class AssemblyAIService {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `${ASSEMBLYAI_BASE}/upload`);
       xhr.setRequestHeader('authorization', this.apiKey);
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      xhr.timeout = 90000; // 90 second timeout
 
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) {
@@ -112,7 +114,11 @@ export class AssemblyAIService {
         if (xhr.status === 200) {
           try {
             const { upload_url } = JSON.parse(xhr.responseText);
-            resolve(upload_url);
+            if (!upload_url) {
+              reject(new Error('Upload succeeded but no URL returned'));
+            } else {
+              resolve(upload_url);
+            }
           } catch {
             reject(new Error('Invalid upload response'));
           }
@@ -122,6 +128,7 @@ export class AssemblyAIService {
       };
 
       xhr.onerror = () => reject(new Error('Upload network error'));
+      xhr.ontimeout = () => reject(new Error('Upload timed out (90s). Try a shorter recording or better connection.'));
       xhr.send(blob);
     });
   }
