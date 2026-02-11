@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef, type ReactNode } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -19,6 +19,10 @@ import {
 } from 'lucide-react';
 import { meetingRepository } from '../../../services/meetingRepository';
 
+export interface NotesEditorHandle {
+  saveNow: () => void;
+}
+
 interface NotesEditorProps {
   meetingId: string;
   initialContent: string;
@@ -33,10 +37,10 @@ function parseContent(content: string): string | Record<string, unknown> {
   }
 }
 
-export default function NotesEditor({
+const NotesEditor = forwardRef<NotesEditorHandle, NotesEditorProps>(function NotesEditor({
   meetingId,
   initialContent,
-}: NotesEditorProps) {
+}, ref) {
   const [saveStatus, setSaveStatus] = useState<
     'idle' | 'saving' | 'saved'
   >('idle');
@@ -91,6 +95,17 @@ export default function NotesEditor({
       }, 3000);
     },
   });
+
+  // Expose saveNow to parent via ref
+  useImperativeHandle(ref, () => ({
+    saveNow: () => {
+      if (pendingRef.current && editor) {
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        const json = JSON.stringify(editor.getJSON());
+        save(json);
+      }
+    },
+  }), [editor, save]);
 
   // beforeunload: warn and force-save if pending changes
   useEffect(() => {
@@ -237,7 +252,9 @@ export default function NotesEditor({
       />
     </div>
   );
-}
+});
+
+export default NotesEditor;
 
 function ToolbarButton({
   onClick,

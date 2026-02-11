@@ -163,9 +163,16 @@ export class ClaudeService {
 
     const response = await this.client.messages.create({
       model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 4096,
+      max_tokens: 16384,
       messages: [{ role: 'user', content: prompt }],
     });
+
+    // Detect truncated response (hit max_tokens limit)
+    if (response.stop_reason === 'max_tokens') {
+      throw new Error(
+        'Analysis response was too long and got cut off. Try with a shorter meeting or fewer notes.',
+      );
+    }
 
     const content = response.content[0];
     if (content.type !== 'text') {

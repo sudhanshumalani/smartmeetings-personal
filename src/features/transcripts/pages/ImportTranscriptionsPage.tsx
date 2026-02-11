@@ -70,7 +70,8 @@ export default function ImportTranscriptionsPage() {
 
       const now = new Date();
       const meetingId = crypto.randomUUID();
-      const transcriptDate = new Date(detail.created);
+      const parsed = new Date(detail.created);
+      const transcriptDate = isNaN(parsed.getTime()) ? now : parsed;
 
       // Create Meeting
       const meeting: Meeting = {

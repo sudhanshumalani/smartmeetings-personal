@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, Calendar, FileText, Mic, Brain, Download, Printer, Trash2 } from 'lucide-react';
+import { ArrowLeft, Calendar, FileText, Mic, Brain, Download, Printer, Trash2, Save } from 'lucide-react';
 import type { MeetingStatus } from '../../../db/database';
 import { meetingRepository } from '../../../services/meetingRepository';
 import { tiptapJsonToPlainText } from '../../../services/tiptapUtils';
@@ -12,6 +12,7 @@ import ConfirmDialog from '../../../shared/components/ConfirmDialog';
 import StakeholderPicker from '../components/StakeholderPicker';
 import ChipInput from '../components/ChipInput';
 import NotesEditor from '../components/NotesEditor';
+import type { NotesEditorHandle } from '../components/NotesEditor';
 import AudioTab from '../../audio/components/AudioTab';
 import AnalysisTab from '../../analysis/components/AnalysisTab';
 import MeetingPrintView from '../components/MeetingPrintView';
@@ -60,6 +61,7 @@ export default function MeetingDetailPage() {
   const [title, setTitle] = useState('');
   const [titleLoaded, setTitleLoaded] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const notesEditorRef = useRef<NotesEditorHandle>(null);
 
   // undefined = loading, null = not found, Meeting = found
   const meeting = useLiveQuery(
@@ -218,6 +220,14 @@ export default function MeetingDetailPage() {
           {!isMobile && (
             <div className="flex items-center gap-1 no-print">
               <button
+                onClick={() => notesEditorRef.current?.saveNow()}
+                className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+                aria-label="Save now"
+                title="Save now (flushes pending changes)"
+              >
+                <Save size={18} />
+              </button>
+              <button
                 onClick={handleExportJson}
                 className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
                 aria-label="Export as JSON"
@@ -247,14 +257,23 @@ export default function MeetingDetailPage() {
 
         <div className="mb-4 flex items-center gap-1 pl-12 text-sm text-gray-500 dark:text-gray-400">
           <Calendar size={14} />
-          <span>
-            {meeting.date.toLocaleDateString('en-US', {
-              weekday: 'long',
-              month: 'long',
-              day: 'numeric',
-              year: 'numeric',
-            })}
-          </span>
+          <input
+            type="date"
+            value={
+              meeting.date instanceof Date && !isNaN(meeting.date.getTime())
+                ? meeting.date.toISOString().slice(0, 10)
+                : ''
+            }
+            onChange={async (e) => {
+              if (!id || !e.target.value) return;
+              const newDate = new Date(e.target.value + 'T00:00:00');
+              if (!isNaN(newDate.getTime())) {
+                await meetingRepository.update(id, { date: newDate });
+              }
+            }}
+            className="border-0 bg-transparent text-sm text-gray-500 outline-none hover:text-gray-700 focus:text-gray-900 dark:text-gray-400 dark:hover:text-gray-300 dark:focus:text-gray-100"
+            aria-label="Meeting date"
+          />
         </div>
 
         <div className="space-y-3 pl-12">
@@ -313,7 +332,7 @@ export default function MeetingDetailPage() {
 
       {/* Tab content */}
       {activeTab === 'notes' && (
-        <NotesEditor meetingId={id} initialContent={meeting.notes} />
+        <NotesEditor ref={notesEditorRef} meetingId={id} initialContent={meeting.notes} />
       )}
       {activeTab === 'audio' && (
         <AudioTab meetingId={id} />
