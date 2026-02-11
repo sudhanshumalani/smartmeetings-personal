@@ -25,8 +25,6 @@ export default function StakeholderForm({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [organization, setOrganization] = useState('');
-  const [notes, setNotes] = useState('');
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
 
   const [creatingCategory, setCreatingCategory] = useState(false);
@@ -40,15 +38,11 @@ export default function StakeholderForm({
       setName(stakeholder.name);
       setEmail(stakeholder.email ?? '');
       setPhone(stakeholder.phone ?? '');
-      setOrganization(stakeholder.organization ?? '');
-      setNotes(stakeholder.notes ?? '');
       setSelectedCategoryIds([...stakeholder.categoryIds]);
     } else {
       setName('');
       setEmail('');
       setPhone('');
-      setOrganization('');
-      setNotes('');
       setSelectedCategoryIds([]);
     }
     setCreatingCategory(false);
@@ -93,8 +87,6 @@ export default function StakeholderForm({
           name: trimmed,
           email: email.trim() || undefined,
           phone: phone.trim() || undefined,
-          organization: organization.trim() || undefined,
-          notes: notes.trim() || undefined,
           categoryIds: selectedCategoryIds,
         });
         addToast('Stakeholder updated', 'success');
@@ -104,8 +96,6 @@ export default function StakeholderForm({
           name: trimmed,
           email: email.trim() || undefined,
           phone: phone.trim() || undefined,
-          organization: organization.trim() || undefined,
-          notes: notes.trim() || undefined,
           categoryIds: selectedCategoryIds,
         });
         addToast('Stakeholder created', 'success');
@@ -120,9 +110,9 @@ export default function StakeholderForm({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="mx-4 w-full max-w-lg rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800">
-        <div className="mb-4 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-lg bg-white shadow-xl dark:bg-gray-800">
+        <div className="flex items-center justify-between px-6 pt-6 pb-4">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
             {isEdit ? 'Edit Stakeholder' : 'Add Stakeholder'}
           </h2>
@@ -135,7 +125,7 @@ export default function StakeholderForm({
           </button>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-3 overflow-y-auto px-6">
           {/* Name */}
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -175,34 +165,6 @@ export default function StakeholderForm({
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+1 (555) 000-0000"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-            />
-          </div>
-
-          {/* Organization */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Organization
-            </label>
-            <input
-              type="text"
-              value={organization}
-              onChange={(e) => setOrganization(e.target.value)}
-              placeholder="Company or organization"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-            />
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Notes
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Any additional notes..."
-              rows={2}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
             />
           </div>
@@ -294,7 +256,7 @@ export default function StakeholderForm({
         </div>
 
         {/* Actions */}
-        <div className="mt-6 flex justify-end gap-3">
+        <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4 dark:border-gray-700">
           <button
             onClick={onClose}
             className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"

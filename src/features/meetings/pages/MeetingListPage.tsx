@@ -71,6 +71,22 @@ function groupByDateSection(meetings: Meeting[]): [string, Meeting[]][] {
   return [...groups.entries()];
 }
 
+function groupByStakeholder(
+  meetings: Meeting[],
+  stakeholderMap: Map<string, { name: string }>,
+): [string, Meeting[]][] {
+  const groups = new Map<string, Meeting[]>();
+
+  for (const meeting of meetings) {
+    const firstId = meeting.stakeholderIds[0];
+    const label = firstId ? (stakeholderMap.get(firstId)?.name ?? 'Unknown') : 'No Stakeholder';
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label)!.push(meeting);
+  }
+
+  return [...groups.entries()];
+}
+
 function SkeletonCard() {
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
@@ -209,11 +225,13 @@ export default function MeetingListPage() {
     });
   }, [filteredMeetings, sortBy, stakeholderMap]);
 
-  // Group by date sections (only when sorting by date and not searching)
+  // Group by sections (date or stakeholder, not when searching)
   const groupedMeetings = useMemo(() => {
-    if (debouncedSearch || sortBy !== 'date') return null;
-    return groupByDateSection(sortedMeetings);
-  }, [sortedMeetings, debouncedSearch, sortBy]);
+    if (debouncedSearch) return null;
+    if (sortBy === 'date') return groupByDateSection(sortedMeetings);
+    if (sortBy === 'stakeholder') return groupByStakeholder(sortedMeetings, stakeholderMap);
+    return null;
+  }, [sortedMeetings, debouncedSearch, sortBy, stakeholderMap]);
 
   // Get categories for a meeting
   function getMeetingCategories(meeting: Meeting): StakeholderCategory[] {
