@@ -2,7 +2,7 @@
 
 > **Progressive Web App for Intelligent Meeting Notes Management**
 >
-> Version: 2.1 | Last updated: 2026-02-06
+> Version: 2.2 | Last updated: 2026-02-11
 
 ---
 
@@ -394,7 +394,7 @@ src/
 │   │   └── hooks/                 # useSearch
 │   └── settings/
 │       ├── components/            # ApiKeyInput, ThemeToggle, ExportPanel, CloudBackupPanel
-│       └── pages/                 # SettingsPage
+│       └── pages/                 # SettingsPage (API keys, theme, Google Drive, cloud backup, export/import)
 ├── shared/
 │   ├── components/                # Header, OfflineIndicator, Toast, ConfirmDialog,
 │   │                              # EmptyState, TrashView
@@ -533,8 +533,10 @@ Each card shows:
 ```
 
 **Filters**: status, stakeholder, stakeholder category, tags, date range.
-**Sort**: date (default), title, last modified.
+**Sort**: date (default), title, last modified, stakeholder.
 **Search**: full-text across title, notes, participants, tags (300ms debounce).
+
+When sorting by **stakeholder**, meetings are grouped by the first linked stakeholder's name (similar to date-based grouping). Meetings with no stakeholder are grouped under "No Stakeholder".
 
 **Empty state** (first run): Friendly "No meetings yet" message with prominent "Create your first meeting" button and a hint to set up API keys in Settings.
 
@@ -546,9 +548,9 @@ Each card shows:
 |---|---|---|
 | `/` | `MeetingListPage` | Dashboard with card grid, search, filters |
 | `/meetings/:id` | `MeetingDetailPage` | Tabbed meeting workspace (notes, audio, analysis) |
-| `/stakeholders` | `StakeholderListPage` | Stakeholder list with search and category filter |
+| `/stakeholders` | `StakeholderListPage` | Stakeholder list with search and category filter (tabbed: Stakeholders / Categories) |
 | `/stakeholders/:id` | `StakeholderDetailPage` | Stakeholder detail + linked meetings |
-| `/settings` | `SettingsPage` | API keys, theme, cloud backup, export/import |
+| `/settings` | `SettingsPage` | API keys, theme, Google Drive backup, cloud backup (Cloudflare), export/import |
 | `/trash` | `TrashPage` | Soft-deleted items, restore or permanent delete |
 
 **Meeting creation**: No `/meetings/new` route. Clicking "New Meeting" auto-creates a draft meeting with a default title ("Meeting — Feb 6, 2026") and navigates to `/meetings/:id`. User edits metadata inline on the detail page.
@@ -615,17 +617,29 @@ export class ClaudeService {
     const prompt = ANALYSIS_PROMPT.replace('${text}', text);
 
     const response = await this.client.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 4096,
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 12288,
+      temperature: 0.1,
       messages: [{ role: 'user', content: prompt }],
     });
+
+    // Detect truncated response (hit max_tokens limit)
+    if (response.stop_reason === 'max_tokens') {
+      throw new Error('Analysis response was too long and got cut off.');
+    }
 
     const content = response.content[0];
     if (content.type !== 'text') {
       throw new Error('Unexpected response format');
     }
 
-    return JSON.parse(content.text) as AnalysisResult;
+    // Strip any accidental markdown code fences
+    let jsonText = content.text.trim();
+    if (jsonText.startsWith('```')) {
+      jsonText = jsonText.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+    }
+
+    return this.parseAndValidate(jsonText);
   }
 
   buildPromptForCopyPaste(text: string): string {
@@ -1342,7 +1356,11 @@ ${text}
   "nextSteps": "2-3 sentences on immediate actions and when team reconnects"
 }
 
-**Critical:** Capture EVERYTHING important. Include specific names, numbers, quotes. Group by themes. Don't over-summarize.
+**Critical rules:**
+- Be CONCISE. Each keyPoint should be 1 sentence. Each theme should have 3-5 keyPoints max.
+- Limit to 5-8 themes. Merge related topics.
+- Include specific names, numbers, dates when mentioned.
+- Skip filler, small talk, and off-topic conversation.
 
 Return ONLY valid JSON, no markdown code blocks.
 ```
@@ -1374,6 +1392,8 @@ The text sent to Claude is constructed as follows:
    (plain text from TipTap)
    ```
 
+The combined text is capped at **60,000 characters** (~15,000 tokens) to keep API calls fast and prevent token limit issues with 60+ minute meetings. If truncated, a `[Content truncated for length]` marker is appended.
+
 The user can edit the combined text in a textarea before running analysis.
 
 ### 8.3 Workflow 1 — API (Primary)
@@ -1395,8 +1415,9 @@ Inject text into prompt template (replace ${text})
     │
     ▼
 Call Claude API via @anthropic-ai/sdk
-  ├── model: claude-sonnet-4-5-20250929
-  ├── max_tokens: 4096
+  ├── model: claude-haiku-4-5-20251001  (fast, optimized for structured extraction)
+  ├── max_tokens: 12288
+  ├── temperature: 0.1
   └── dangerouslyAllowBrowser: true
     │
     ▼
@@ -1594,8 +1615,8 @@ This covers accidental tab close. For in-app navigation (React Router), use a `u
 
 | Feature | Details |
 |---|---|
-| **Stakeholder CRUD** | Create, edit, soft-delete stakeholders with name, email, phone, organization, notes |
-| **Category Management** | Create, edit, soft-delete categories with name and color (from preset palette) |
+| **Stakeholder CRUD** | Create, edit, soft-delete stakeholders with name, email, phone. Edit form is compact (no org/notes fields — those display on detail page only) |
+| **Category Management** | Create, edit, soft-delete categories with name and color (from preset palette). Accessed via "Categories" tab on StakeholderListPage (not Settings) |
 | **Multiple Categories** | A stakeholder can belong to multiple categories (multi-select chips) |
 | **Color-coded Badges** | Categories shown as colored badges/chips throughout the app |
 | **Link to Meetings** | Associate stakeholders with meetings via `stakeholderIds[]` on Meeting |
@@ -1615,7 +1636,7 @@ This covers accidental tab close. For in-app navigation (React Router), use a `u
 
 | Route | Page |
 |---|---|
-| `/stakeholders` | List page: card grid of stakeholders, search bar, category filter |
+| `/stakeholders` | List page with two tabs: **Stakeholders** (card grid with search + category filter) and **Categories** (CategoryManager for CRUD) |
 | `/stakeholders/:id` | Detail page: stakeholder info, category badges, linked meetings list |
 
 ### 10.4 StakeholderPicker Component
@@ -1712,9 +1733,19 @@ Every create/update/delete in any repository adds an entry to `syncQueue` in Dex
 - Sync button shows pending count badge: `[Sync (3)]`
 - After sync: toast notification with results ("Synced 3 changes" or "2 failed")
 
-### 11.4 Manual JSON Backup
+### 11.4 Google Drive Backup
 
-Separate from cloud sync. Available in Settings → Export:
+Optional Google Drive integration in Settings:
+- **Backup to Drive**: Exports all data and uploads to connected Google Drive
+- **Restore from Drive**: Downloads and imports backup from Google Drive
+- **Test Connection**: Verifies Google Drive API connectivity
+- **Disconnect**: Removes Google Drive connection
+
+This is separate from Cloudflare D1 sync (which uses the header Sync button). Google Drive backup is a manual action from Settings.
+
+### 11.5 Manual JSON Backup
+
+Separate from both cloud sync and Google Drive. Available in Settings → Export:
 - "Export All Data" → downloads a JSON file with all Dexie tables (excluding audio blobs)
 - "Import Data" → upload a JSON file, merge into Dexie
 - This is the safety net independent of cloud sync
@@ -1802,7 +1833,15 @@ Mobile is **capture-only mode**:
 | Cloud sync | Yes (manual) | Yes (manual) |
 | Export | No — do on desktop | Yes |
 
-**Implementation**: Mobile detection uses a `useIsMobile()` hook based on CSS media query matching, NOT user-agent sniffing:
+**Implementation**: Mobile detection uses a `useIsMobile()` hook based on CSS media query matching, NOT user-agent sniffing. When `useIsMobile()` returns true, `App.tsx` renders `<MobileApp />` directly (bypassing `<Layout>` and React Router). This means Layout.tsx changes are invisible on iOS — all mobile UI fixes must target MobileApp.tsx.
+
+**Mobile responsive fixes applied:**
+- `html, body, #root`: `overflow-x: hidden; width: 100%` prevents horizontal scroll
+- MobileApp padding: `px-4` (not px-6), safe-area insets via `max(1rem, env(safe-area-inset-*))` to avoid double padding
+- Toast container: `left-4 right-4 overflow-hidden` prevents slideInRight animation from causing overflow
+- PWAUpdatePrompt: `right-4 sm:right-auto` constrains on mobile
+- Touch targets: `min-width: 44px` scoped to `main` content only (excludes header nav)
+- Viewport meta: `maximum-scale=1.0` prevents zoom-induced overflow on iOS
 
 ```typescript
 // shared/hooks/useIsMobile.ts

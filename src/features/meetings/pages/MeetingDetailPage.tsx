@@ -261,7 +261,7 @@ export default function MeetingDetailPage() {
             type="date"
             value={
               meeting.date instanceof Date && !isNaN(meeting.date.getTime())
-                ? meeting.date.toISOString().slice(0, 10)
+                ? `${meeting.date.getFullYear()}-${String(meeting.date.getMonth() + 1).padStart(2, '0')}-${String(meeting.date.getDate()).padStart(2, '0')}`
                 : ''
             }
             onChange={async (e) => {
