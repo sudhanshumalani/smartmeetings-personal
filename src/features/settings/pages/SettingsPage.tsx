@@ -77,6 +77,7 @@ export default function SettingsPage() {
   const [driveConnecting, setDriveConnecting] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [backingUp, setBackingUp] = useState(false);
 
   // Cloud Sync
   const [cloudUrl, setCloudUrl] = useState('');
@@ -242,6 +243,18 @@ export default function SettingsPage() {
       addToast(`Restore failed: ${(err as Error).message}`, 'error');
     }
     setRestoring(false);
+  }
+
+  async function handleBackupToDrive() {
+    setBackingUp(true);
+    try {
+      const data = await exportAllData();
+      await googleDriveService.uploadBackup(data);
+      addToast('Backed up to Google Drive', 'success');
+    } catch (err) {
+      addToast(`Backup failed: ${(err as Error).message}`, 'error');
+    }
+    setBackingUp(false);
   }
 
   // --- Cloud Sync handlers ---
@@ -601,16 +614,16 @@ export default function SettingsPage() {
               {driveConnected && (
                 <>
                   <button
-                    onClick={handleTestConnection}
-                    disabled={testingConnection}
-                    className="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                    onClick={handleBackupToDrive}
+                    disabled={backingUp}
+                    className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
                   >
-                    {testingConnection ? (
+                    {backingUp ? (
                       <Loader2 size={14} className="animate-spin" />
                     ) : (
-                      <Cloud size={14} />
+                      <Upload size={14} />
                     )}
-                    Test Connection
+                    Backup to Drive
                   </button>
                   <button
                     onClick={handleRestoreFromDrive}
@@ -623,6 +636,18 @@ export default function SettingsPage() {
                       <Download size={14} />
                     )}
                     Restore from Drive
+                  </button>
+                  <button
+                    onClick={handleTestConnection}
+                    disabled={testingConnection}
+                    className="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                  >
+                    {testingConnection ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Cloud size={14} />
+                    )}
+                    Test Connection
                   </button>
                 </>
               )}
