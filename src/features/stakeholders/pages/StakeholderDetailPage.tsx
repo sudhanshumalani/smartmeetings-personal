@@ -64,8 +64,20 @@ export default function StakeholderDetailPage() {
   async function handleDelete() {
     if (!id) return;
     try {
+      const name = stakeholder?.name ?? 'Stakeholder';
       await stakeholderRepository.softDelete(id);
-      addToast('Stakeholder deleted', 'success');
+      addToast(
+        `"${name}" moved to Trash`,
+        'success',
+        5000,
+        {
+          label: 'Undo',
+          onClick: async () => {
+            await stakeholderRepository.restore(id);
+            addToast(`"${name}" restored`, 'success');
+          },
+        },
+      );
       navigate('/stakeholders');
     } catch {
       addToast('Failed to delete stakeholder', 'error');

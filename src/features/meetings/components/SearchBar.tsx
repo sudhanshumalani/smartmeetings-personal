@@ -17,6 +17,7 @@ export default function SearchBar({ value, onChange }: SearchBarProps) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="Search meetings..."
+        data-search-input
         className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-8 text-sm placeholder-gray-400 focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
       />
       {value && (

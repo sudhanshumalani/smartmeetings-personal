@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Outlet, NavLink } from 'react-router-dom';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
@@ -21,6 +21,9 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useOnline } from '../../contexts/OnlineContext';
 import { useToast } from '../../contexts/ToastContext';
 import { syncService } from '../../services/syncService';
+import { meetingRepository } from '../../services/meetingRepository';
+import useKeyboardShortcuts from '../hooks/useKeyboardShortcuts';
+import KeyboardShortcutsHelp from './KeyboardShortcutsHelp';
 import OfflineIndicator from './OfflineIndicator';
 
 const navLinks = [
@@ -136,6 +139,7 @@ function SyncButton() {
         <span
           className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-bold text-white"
           data-testid="sync-badge"
+          aria-live="polite"
         >
           {pendingCount > 99 ? '99+' : pendingCount}
         </span>
@@ -146,9 +150,29 @@ function SyncButton() {
 
 export default function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const navigate = useNavigate();
+
+  const shortcutActions = useMemo(() => ({
+    onNewMeeting: async () => {
+      const id = await meetingRepository.quickCreate();
+      navigate(`/meetings/${id}`);
+    },
+    onFocusSearch: () => {
+      const searchInput = document.querySelector<HTMLInputElement>('[data-search-input]');
+      searchInput?.focus();
+    },
+  }), [navigate]);
+
+  const { showHelp, setShowHelp } = useKeyboardShortcuts(shortcutActions);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[60] focus:rounded focus:bg-brand-600 focus:px-4 focus:py-2 focus:text-white"
+      >
+        Skip to main content
+      </a>
       <OfflineIndicator />
 
       {/* Top Nav Bar — Glassmorphism */}
@@ -228,9 +252,11 @@ export default function Layout() {
       </header>
 
       {/* Main Content */}
-      <main className="mx-auto max-w-7xl px-4 py-6">
+      <main id="main-content" className="mx-auto max-w-7xl px-4 py-6">
         <Outlet />
       </main>
+
+      {showHelp && <KeyboardShortcutsHelp onClose={() => setShowHelp(false)} />}
     </div>
   );
 }

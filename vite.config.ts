@@ -27,6 +27,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        navigateFallback: '/smartmeetings-personal/offline.html',
+        navigateFallbackDenylist: [/^\/api/, /\.json$/, /\.js$/, /\.css$/],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/api\.assemblyai\.com\/.*/i,

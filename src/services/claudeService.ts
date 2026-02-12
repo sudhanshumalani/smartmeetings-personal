@@ -165,12 +165,13 @@ export class ClaudeService {
   }
 
   /** Analyze meeting text via the Claude API. Returns parsed AnalysisResult. */
-  async analyze(text: string): Promise<AnalysisResult> {
+  async analyze(text: string, promptContent?: string): Promise<AnalysisResult> {
     if (!this.client) {
       throw new Error('Claude API key not configured');
     }
 
-    const prompt = ANALYSIS_PROMPT.replace('${text}', text);
+    const template = promptContent || ANALYSIS_PROMPT;
+    const prompt = template.replace('${text}', text);
 
     const response = await this.client.messages.create({
       model: 'claude-haiku-4-5-20251001',
@@ -201,8 +202,9 @@ export class ClaudeService {
   }
 
   /** Build the full prompt with meeting text injected — for copy-paste workflow. */
-  buildPromptForCopyPaste(text: string): string {
-    return ANALYSIS_PROMPT.replace('${text}', text);
+  buildPromptForCopyPaste(text: string, promptContent?: string): string {
+    const template = promptContent || ANALYSIS_PROMPT;
+    return template.replace('${text}', text);
   }
 
   /** Parse and validate user-pasted JSON from the copy-paste workflow. */

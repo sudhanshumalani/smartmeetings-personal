@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, Copy, Check, AlertCircle } from 'lucide-react';
 import { claudeService } from '../../../services/claudeService';
 import type { AnalysisResult } from '../../../services/claudeService';
+import useFocusTrap from '../../../shared/hooks/useFocusTrap';
 
 interface CopyPasteModalProps {
   prompt: string;
@@ -10,6 +11,7 @@ interface CopyPasteModalProps {
 }
 
 export default function CopyPasteModal({ prompt, onResult, onClose }: CopyPasteModalProps) {
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose);
   const [copied, setCopied] = useState(false);
   const [pastedJson, setPastedJson] = useState('');
   const [parseError, setParseError] = useState<string | null>(null);
@@ -36,7 +38,7 @@ export default function CopyPasteModal({ prompt, onResult, onClose }: CopyPasteM
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white shadow-xl dark:bg-gray-800">
+      <div ref={trapRef} className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white shadow-xl dark:bg-gray-800" role="dialog" aria-modal="true">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">

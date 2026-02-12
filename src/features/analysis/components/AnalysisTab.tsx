@@ -9,6 +9,7 @@ import { useToast } from '../../../contexts/ToastContext';
 import { claudeService, prepareAnalysisText } from '../../../services/claudeService';
 import type { AnalysisResult } from '../../../services/claudeService';
 import { getClaudeApiKey } from '../../../services/settingsService';
+import { promptTemplateRepository } from '../../../services/promptTemplateRepository';
 import AnalysisPanel from './AnalysisPanel';
 import CopyPasteModal from './CopyPasteModal';
 
@@ -26,6 +27,21 @@ export default function AnalysisTab({ meetingId, notesPlainText }: AnalysisTabPr
   const [analyzing, setAnalyzing] = useState(false);
   const [showCopyPaste, setShowCopyPaste] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedPromptId, setSelectedPromptId] = useState<string>('');
+
+  // Load prompt templates
+  const promptTemplates = useLiveQuery(() => promptTemplateRepository.getAll());
+
+  // Set default selection once templates are loaded
+  useEffect(() => {
+    if (promptTemplates && !selectedPromptId) {
+      const defaultTemplate = promptTemplates.find(t => t.isDefault);
+      if (defaultTemplate) setSelectedPromptId(defaultTemplate.id);
+      else if (promptTemplates.length > 0) setSelectedPromptId(promptTemplates[0].id);
+    }
+  }, [promptTemplates, selectedPromptId]);
+
+  const selectedPromptContent = promptTemplates?.find(t => t.id === selectedPromptId)?.content;
 
   // Load existing analysis (latest non-deleted)
   const existingAnalysis = useLiveQuery(
@@ -64,8 +80,8 @@ export default function AnalysisTab({ meetingId, notesPlainText }: AnalysisTabPr
 
     try {
       await claudeService.initialize();
-      const result = await claudeService.analyze(preparedText);
-      await saveAnalysis(result, 'api');
+      const result = await claudeService.analyze(preparedText, selectedPromptContent);
+      await saveAnalysis(result, 'api', selectedPromptId || undefined);
       addToast('Analysis complete!', 'success');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Analysis failed';
@@ -89,12 +105,12 @@ export default function AnalysisTab({ meetingId, notesPlainText }: AnalysisTabPr
   }
 
   async function handleCopyPasteResult(result: AnalysisResult) {
-    await saveAnalysis(result, 'manual');
+    await saveAnalysis(result, 'manual', selectedPromptId || undefined);
     setShowCopyPaste(false);
     addToast('Analysis saved!', 'success');
   }
 
-  async function saveAnalysis(result: AnalysisResult, sourceType: 'api' | 'manual') {
+  async function saveAnalysis(result: AnalysisResult, sourceType: 'api' | 'manual', promptTemplateId?: string) {
     // Soft-delete existing analysis
     const existing = await db.meetingAnalyses
       .where('meetingId')
@@ -124,6 +140,7 @@ export default function AnalysisTab({ meetingId, notesPlainText }: AnalysisTabPr
       nextSteps: result.nextSteps,
       sourceType,
       inputText: preparedText,
+      promptTemplateId,
       createdAt: new Date(),
       deletedAt: null,
     };
@@ -188,6 +205,26 @@ export default function AnalysisTab({ meetingId, notesPlainText }: AnalysisTabPr
         </p>
       </div>
 
+      {/* Prompt template selector */}
+      {promptTemplates && promptTemplates.length > 0 && (
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Analysis Prompt
+          </label>
+          <select
+            value={selectedPromptId}
+            onChange={(e) => setSelectedPromptId(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 sm:w-auto"
+          >
+            {promptTemplates.map(t => (
+              <option key={t.id} value={t.id}>
+                {t.name}{t.isDefault ? ' (default)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {/* Action buttons */}
       <div className="flex items-center gap-3">
         {hasApiKey && (
@@ -202,7 +239,9 @@ export default function AnalysisTab({ meetingId, notesPlainText }: AnalysisTabPr
             ) : (
               <Brain size={16} />
             )}
-            {analyzing ? 'Analyzing...' : hasExistingAnalysis ? 'Re-analyze' : 'Analyze'}
+            <span aria-live="polite">
+              {analyzing ? 'Analyzing...' : hasExistingAnalysis ? 'Re-analyze' : 'Analyze'}
+            </span>
           </button>
         )}
 
@@ -246,7 +285,7 @@ export default function AnalysisTab({ meetingId, notesPlainText }: AnalysisTabPr
       {/* Copy-paste modal */}
       {showCopyPaste && (
         <CopyPasteModal
-          prompt={claudeService.buildPromptForCopyPaste(preparedText)}
+          prompt={claudeService.buildPromptForCopyPaste(preparedText, selectedPromptContent)}
           onResult={handleCopyPasteResult}
           onClose={() => setShowCopyPaste(false)}
         />

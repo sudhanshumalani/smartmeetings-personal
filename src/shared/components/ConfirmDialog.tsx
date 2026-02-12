@@ -1,4 +1,5 @@
 import { AlertTriangle } from 'lucide-react';
+import useFocusTrap from '../hooks/useFocusTrap';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -19,11 +20,13 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const trapRef = useFocusTrap<HTMLDivElement>(onCancel);
+
   if (!open) return null;
 
   return (
     <div className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="animate-scale-in mx-4 w-full max-w-md rounded-xl bg-white p-6 shadow-2xl dark:bg-gray-800">
+      <div ref={trapRef} className="animate-scale-in mx-4 w-full max-w-md rounded-xl bg-white p-6 shadow-2xl dark:bg-gray-800" role="dialog" aria-modal="true">
         <div className="mb-4 flex justify-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
             <AlertTriangle size={24} className="text-red-600 dark:text-red-400" />

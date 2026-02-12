@@ -9,15 +9,22 @@ import {
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 export interface Toast {
   id: string;
   message: string;
   type: ToastType;
+  action?: ToastAction;
+  duration: number;
 }
 
 interface ToastContextValue {
   toasts: Toast[];
-  addToast: (message: string, type: ToastType, duration?: number) => void;
+  addToast: (message: string, type: ToastType, duration?: number, action?: ToastAction) => void;
   removeToast: (id: string) => void;
 }
 
@@ -32,12 +39,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addToast = useCallback(
-    (message: string, type: ToastType, duration = 3000) => {
+    (message: string, type: ToastType, duration?: number, action?: ToastAction) => {
       const id = `toast-${++counterRef.current}`;
-      setToasts((prev) => [...prev, { id, message, type }]);
+      // If action is present, default to 5000ms so user has time to click
+      const finalDuration = duration ?? (action ? 5000 : 3000);
+      setToasts((prev) => [...prev, { id, message, type, action, duration: finalDuration }]);
 
-      if (duration > 0) {
-        setTimeout(() => removeToast(id), duration);
+      if (finalDuration > 0) {
+        setTimeout(() => removeToast(id), finalDuration);
       }
     },
     [removeToast],

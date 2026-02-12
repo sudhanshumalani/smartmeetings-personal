@@ -54,12 +54,23 @@ export default function Toast() {
           >
             <div className="flex items-center gap-2.5 px-4 py-3">
               <Icon size={18} className={`shrink-0 ${config.iconClass}`} />
-              <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
+              <span className="flex-1 text-sm font-medium text-gray-800 dark:text-gray-200">
                 {toast.message}
               </span>
+              {toast.action && (
+                <button
+                  onClick={() => {
+                    toast.action!.onClick();
+                    removeToast(toast.id);
+                  }}
+                  className="shrink-0 text-sm font-semibold text-brand-600 underline hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
+                >
+                  {toast.action.label}
+                </button>
+              )}
               <button
                 onClick={() => removeToast(toast.id)}
-                className="ml-2 shrink-0 rounded p-0.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+                className="shrink-0 rounded p-0.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
                 aria-label="Dismiss"
               >
                 <X size={14} />
@@ -68,7 +79,7 @@ export default function Toast() {
             <div className="h-0.5 w-full bg-gray-100 dark:bg-gray-700">
               <div
                 className={`h-full ${countdownColors[toast.type]}`}
-                style={{ animation: 'shrinkBar 3s linear forwards' }}
+                style={{ animation: `shrinkBar ${toast.duration / 1000}s linear forwards` }}
               />
             </div>
           </div>

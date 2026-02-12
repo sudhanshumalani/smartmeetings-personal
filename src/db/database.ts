@@ -128,8 +128,40 @@ export interface MeetingAnalysis {
   nextSteps: string;
   sourceType: 'api' | 'manual';
   inputText: string;
+  promptTemplateId?: string;
   createdAt: Date;
   deletedAt: Date | null;
+}
+
+export interface PromptTemplate {
+  id: string;
+  name: string;
+  content: string;
+  isDefault: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}
+
+export interface MeetingTemplate {
+  id: string;
+  name: string;
+  defaultTags: string[];
+  defaultStakeholderIds: string[];
+  defaultNotes: string;
+  promptTemplateId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}
+
+export interface ErrorLog {
+  id: string;
+  timestamp: Date;
+  message: string;
+  stack: string | null;
+  component: string | null;
+  action: string | null;
 }
 
 export type ThemeMode = 'light' | 'dark' | 'system';
@@ -173,6 +205,9 @@ export class SmartMeetingsDB extends Dexie {
   meetingAnalyses!: Table<MeetingAnalysis>;
   appSettings!: Table<AppSettings>;
   syncQueue!: Table<SyncQueueItem>;
+  promptTemplates!: Table<PromptTemplate>;
+  meetingTemplates!: Table<MeetingTemplate>;
+  errorLogs!: Table<ErrorLog>;
 
   constructor() {
     super('SmartMeetingsDB');
@@ -204,6 +239,21 @@ export class SmartMeetingsDB extends Dexie {
         s.cloudBackupToken = s.cloudBackupToken ?? '';
       });
     });
+
+    this.version(3).stores({
+      meetings: 'id, date, status, *tags, *stakeholderIds, createdAt, updatedAt, deletedAt',
+      stakeholders: 'id, name, *categoryIds, createdAt, updatedAt, deletedAt',
+      stakeholderCategories: 'id, name, createdAt, deletedAt',
+      audioRecordings: 'id, meetingId, order, createdAt, updatedAt, deletedAt',
+      audioChunkBuffers: 'id, sessionId, meetingId, chunkIndex',
+      transcripts: 'id, meetingId, audioRecordingId, createdAt, updatedAt, deletedAt',
+      meetingAnalyses: 'id, meetingId, createdAt, deletedAt',
+      appSettings: 'id',
+      syncQueue: 'id, entity, entityId, createdAt, syncedAt',
+      promptTemplates: 'id, name, isDefault, createdAt, deletedAt',
+      meetingTemplates: 'id, name, createdAt, deletedAt',
+      errorLogs: 'id, timestamp',
+    });
   }
 }
 
@@ -226,4 +276,206 @@ export async function initializeDatabase(): Promise<void> {
       updatedAt: new Date(),
     });
   }
+
+  // Seed default prompt templates if none exist
+  const promptCount = await db.promptTemplates.count();
+  if (promptCount === 0) {
+    const now = new Date();
+    await db.promptTemplates.bulkAdd(DEFAULT_PROMPT_TEMPLATES.map((t, i) => ({
+      ...t,
+      id: crypto.randomUUID(),
+      isDefault: i === 0,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    })));
+  }
 }
+
+export const DEFAULT_PROMPT_TEMPLATES: Omit<PromptTemplate, 'id' | 'isDefault' | 'createdAt' | 'updatedAt' | 'deletedAt'>[] = [
+  {
+    name: 'General Meeting',
+    content: `You are an expert meeting notes assistant. Create comprehensive, thematically-organized notes capturing ALL important information.
+
+**Meeting Content:**
+"""
+\${text}
+"""
+
+**Instructions:** Return a JSON object with these fields:
+
+{
+  "summary": "3-4 sentences: (1) Meeting purpose, (2) Key outcomes, (3) Most important decision/insight, (4) Critical next step",
+
+  "themes": [
+    {
+      "topic": "Descriptive topic name",
+      "keyPoints": [
+        "Detailed point - WHO said it, WHAT was discussed, WHY it matters",
+        "Include quotes, numbers, dates, percentages when mentioned",
+        "Capture concerns and reasoning behind them"
+      ],
+      "context": "Why this topic was discussed"
+    }
+  ],
+
+  "decisions": [
+    {"decision": "What was decided", "madeBy": "Who decided", "rationale": "Why", "implications": "What it means"}
+  ],
+
+  "actionItems": [
+    {"task": "Specific task", "owner": "Name or TBD", "deadline": "Date or TBD", "priority": "high/medium/low", "context": "Why it matters"}
+  ],
+
+  "openItems": [
+    {"item": "Question or concern", "type": "question/blocker/risk", "owner": "Who addresses it", "urgency": "How soon"}
+  ],
+
+  "nextSteps": "2-3 sentences on immediate actions and when team reconnects"
+}
+
+**Critical rules:**
+- Be CONCISE. Each keyPoint should be 1 sentence. Each theme should have 3-5 keyPoints max.
+- Limit to 5-8 themes. Merge related topics.
+- Include specific names, numbers, dates when mentioned.
+- Skip filler, small talk, and off-topic conversation.
+
+Return ONLY valid JSON, no markdown code blocks.`,
+  },
+  {
+    name: 'Standup / Daily Sync',
+    content: `You are a concise meeting notes assistant for daily standups. Focus on status updates, blockers, and plans.
+
+**Meeting Content:**
+"""
+\${text}
+"""
+
+**Instructions:** Return a JSON object:
+
+{
+  "summary": "1-2 sentences: team status and any critical blockers",
+
+  "themes": [
+    {
+      "topic": "Person or Team Area",
+      "keyPoints": [
+        "Yesterday: what was completed",
+        "Today: what is planned",
+        "Blockers: any impediments"
+      ],
+      "context": "Current sprint/project context"
+    }
+  ],
+
+  "decisions": [
+    {"decision": "What was decided", "madeBy": "Who", "rationale": "Why", "implications": "Impact"}
+  ],
+
+  "actionItems": [
+    {"task": "Specific task", "owner": "Name", "deadline": "Today/Tomorrow/TBD", "priority": "high/medium/low", "context": "Why it matters"}
+  ],
+
+  "openItems": [
+    {"item": "Blocker or question", "type": "question/blocker/risk", "owner": "Who addresses it", "urgency": "Immediate/Today/This week"}
+  ],
+
+  "nextSteps": "1 sentence on what the team will focus on"
+}
+
+**Rules:** Keep it short. 2-4 themes max. Focus on blockers and commitments. Skip small talk.
+
+Return ONLY valid JSON, no markdown code blocks.`,
+  },
+  {
+    name: '1:1 Meeting',
+    content: `You are a meeting notes assistant for 1:1 meetings. Focus on career growth, feedback, relationship building, and personal action items.
+
+**Meeting Content:**
+"""
+\${text}
+"""
+
+**Instructions:** Return a JSON object:
+
+{
+  "summary": "2-3 sentences: main topics discussed, key feedback given/received, and relationship status",
+
+  "themes": [
+    {
+      "topic": "Topic area (e.g., Career Growth, Project Update, Feedback)",
+      "keyPoints": [
+        "Key discussion point with context",
+        "Feedback given or received",
+        "Goals or aspirations mentioned"
+      ],
+      "context": "Why this was discussed"
+    }
+  ],
+
+  "decisions": [
+    {"decision": "What was agreed on", "madeBy": "Who", "rationale": "Why", "implications": "What changes"}
+  ],
+
+  "actionItems": [
+    {"task": "Specific follow-up", "owner": "Name", "deadline": "Date or next 1:1", "priority": "high/medium/low", "context": "Why it matters"}
+  ],
+
+  "openItems": [
+    {"item": "Unresolved topic or concern", "type": "question/blocker/risk", "owner": "Who", "urgency": "By next 1:1 / This week"}
+  ],
+
+  "nextSteps": "1-2 sentences on follow-ups and when to reconnect"
+}
+
+**Rules:** 3-5 themes. Capture tone and sentiment. Note career goals and personal development items. Preserve confidentiality context.
+
+Return ONLY valid JSON, no markdown code blocks.`,
+  },
+  {
+    name: 'Strategy / Board Meeting',
+    content: `You are a meeting notes assistant for strategic and board meetings. Focus on strategic decisions, motions, votes, and long-term implications.
+
+**Meeting Content:**
+"""
+\${text}
+"""
+
+**Instructions:** Return a JSON object:
+
+{
+  "summary": "3-4 sentences: meeting purpose, key strategic decisions, most significant outcome, and long-term implications",
+
+  "themes": [
+    {
+      "topic": "Strategic topic name",
+      "keyPoints": [
+        "Strategic argument or position presented",
+        "Data points, financials, or metrics cited",
+        "Dissenting views or concerns raised",
+        "Resolution or direction agreed"
+      ],
+      "context": "Strategic importance and background"
+    }
+  ],
+
+  "decisions": [
+    {"decision": "Strategic decision or motion", "madeBy": "Who proposed/voted", "rationale": "Strategic reasoning", "implications": "Long-term impact"}
+  ],
+
+  "actionItems": [
+    {"task": "Strategic initiative or follow-up", "owner": "Executive/Team responsible", "deadline": "Timeline", "priority": "high/medium/low", "context": "Strategic alignment"}
+  ],
+
+  "openItems": [
+    {"item": "Unresolved strategic question or risk", "type": "question/blocker/risk", "owner": "Who owns resolution", "urgency": "Timeline for resolution"}
+  ],
+
+  "nextSteps": "2-3 sentences on strategic direction and next review point"
+}
+
+**Rules:** 4-8 themes. Capture voting outcomes. Note financial figures precisely. Distinguish between decisions and discussions. Include dissenting opinions.
+
+Return ONLY valid JSON, no markdown code blocks.`,
+  },
+];

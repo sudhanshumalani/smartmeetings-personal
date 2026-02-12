@@ -5,6 +5,7 @@ import { categoryRepository, CATEGORY_COLORS } from '../../../services/categoryR
 import { stakeholderRepository } from '../../../services/stakeholderRepository';
 import type { Stakeholder } from '../../../db/database';
 import { useToast } from '../../../contexts/ToastContext';
+import useFocusTrap from '../../../shared/hooks/useFocusTrap';
 
 interface StakeholderFormProps {
   open: boolean;
@@ -20,12 +21,15 @@ export default function StakeholderForm({
   onSaved,
 }: StakeholderFormProps) {
   const { addToast } = useToast();
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose);
   const categories = useLiveQuery(() => categoryRepository.getAll());
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
+
+  const [emailError, setEmailError] = useState('');
 
   const [creatingCategory, setCreatingCategory] = useState(false);
   const [newCatName, setNewCatName] = useState('');
@@ -81,6 +85,13 @@ export default function StakeholderForm({
       return;
     }
 
+    const trimmedEmail = email.trim();
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setEmailError('Please enter a valid email address');
+      return;
+    }
+    setEmailError('');
+
     try {
       if (isEdit && stakeholder) {
         await stakeholderRepository.update(stakeholder.id, {
@@ -111,7 +122,7 @@ export default function StakeholderForm({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-lg bg-white shadow-xl dark:bg-gray-800">
+      <div ref={trapRef} className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-lg bg-white shadow-xl dark:bg-gray-800" role="dialog" aria-modal="true">
         <div className="flex items-center justify-between px-6 pt-6 pb-4">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
             {isEdit ? 'Edit Stakeholder' : 'Add Stakeholder'}
@@ -149,10 +160,13 @@ export default function StakeholderForm({
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => { setEmail(e.target.value); setEmailError(''); }}
               placeholder="email@example.com"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+              className={`w-full rounded-lg border px-3 py-2 text-sm dark:bg-gray-700 dark:text-gray-100 ${emailError ? 'border-red-400 dark:border-red-500' : 'border-gray-300 dark:border-gray-600'}`}
             />
+            {emailError && (
+              <p className="mt-1 text-xs text-red-500">{emailError}</p>
+            )}
           </div>
 
           {/* Phone */}

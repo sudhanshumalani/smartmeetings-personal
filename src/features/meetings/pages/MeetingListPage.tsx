@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
@@ -15,6 +15,7 @@ import {
 import { db } from '../../../db/database';
 import type { Meeting, StakeholderCategory } from '../../../db/database';
 import { meetingRepository } from '../../../services/meetingRepository';
+import { meetingTemplateRepository } from '../../../services/meetingTemplateRepository';
 import EmptyState from '../../../shared/components/EmptyState';
 import ConfirmDialog from '../../../shared/components/ConfirmDialog';
 import { useToast } from '../../../contexts/ToastContext';
@@ -137,6 +138,11 @@ export default function MeetingListPage() {
 
   const allTags = useLiveQuery(() => meetingRepository.getDistinctTags());
 
+  const meetingTemplates = useLiveQuery(() => meetingTemplateRepository.getAll());
+
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
+  const newMenuRef = useRef<HTMLDivElement>(null);
+
   // Lookup maps
   const stakeholderMap = useMemo(
     () => new Map((stakeholders ?? []).map((s) => [s.id, s])),
@@ -245,8 +251,29 @@ export default function MeetingListPage() {
       .filter((c): c is StakeholderCategory => c !== undefined);
   }
 
+  // Close new meeting menu on outside click
+  useEffect(() => {
+    if (!newMenuOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (newMenuRef.current && !newMenuRef.current.contains(e.target as Node)) {
+        setNewMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [newMenuOpen]);
+
   async function handleNewMeeting() {
+    setNewMenuOpen(false);
     const id = await meetingRepository.quickCreate();
+    navigate(`/meetings/${id}`);
+  }
+
+  async function handleNewFromTemplate(templateId: string) {
+    setNewMenuOpen(false);
+    const template = await meetingTemplateRepository.getById(templateId);
+    if (!template) return;
+    const id = await meetingRepository.quickCreateFromTemplate(template);
     navigate(`/meetings/${id}`);
   }
 
@@ -281,9 +308,20 @@ export default function MeetingListPage() {
   async function handleBulkDelete() {
     const ids = [...selectedIds];
     await meetingRepository.softDeleteMany(ids);
+    const count = ids.length;
     addToast(
-      `${ids.length} meeting${ids.length !== 1 ? 's' : ''} moved to Trash`,
+      `${count} meeting${count !== 1 ? 's' : ''} moved to Trash`,
       'success',
+      5000,
+      {
+        label: 'Undo',
+        onClick: async () => {
+          for (const id of ids) {
+            await meetingRepository.restore(id);
+          }
+          addToast(`${count} meeting${count !== 1 ? 's' : ''} restored`, 'success');
+        },
+      },
     );
     setShowDeleteConfirm(false);
     exitSelectionMode();
@@ -350,13 +388,45 @@ export default function MeetingListPage() {
               <Trash2 size={16} />
               <span className="hidden sm:inline">Trash</span>
             </Link>
-            <button
-              onClick={handleNewMeeting}
-              className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-brand-500 to-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:shadow-md active:scale-[0.98]"
-            >
-              <Plus size={16} />
-              New Meeting
-            </button>
+            <div className="relative" ref={newMenuRef}>
+              <button
+                onClick={() => {
+                  if (meetingTemplates && meetingTemplates.length > 0) {
+                    setNewMenuOpen(!newMenuOpen);
+                  } else {
+                    handleNewMeeting();
+                  }
+                }}
+                className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-brand-500 to-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:shadow-md active:scale-[0.98]"
+              >
+                <Plus size={16} />
+                New Meeting
+                {meetingTemplates && meetingTemplates.length > 0 && (
+                  <ChevronDown size={14} className={`transition-transform ${newMenuOpen ? 'rotate-180' : ''}`} />
+                )}
+              </button>
+              {newMenuOpen && (
+                <div className="absolute right-0 top-full z-30 mt-1 w-56 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+                  <button
+                    onClick={handleNewMeeting}
+                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700"
+                  >
+                    <Plus size={14} />
+                    Blank Meeting
+                  </button>
+                  <div className="mx-3 my-1 border-t border-gray-100 dark:border-gray-700" />
+                  {(meetingTemplates ?? []).map(t => (
+                    <button
+                      key={t.id}
+                      onClick={() => handleNewFromTemplate(t.id)}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700"
+                    >
+                      {t.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

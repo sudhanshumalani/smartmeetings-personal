@@ -17,6 +17,8 @@ import {
   LogOut,
   Palette,
   Server,
+  Brain,
+  FileText,
 } from 'lucide-react';
 import {
   getClaudeApiKey,
@@ -43,6 +45,9 @@ import {
   downloadJson,
   type ExportData,
 } from '../../../services/exportService';
+import { errorLogger } from '../../../services/errorLogger';
+import PromptTemplateManager from '../components/PromptTemplateManager';
+import MeetingTemplateManager from '../components/MeetingTemplateManager';
 
 
 function SectionIcon({ icon: Icon, color }: { icon: typeof Key; color: string }) {
@@ -81,6 +86,7 @@ export default function SettingsPage() {
 
   // Cloud Sync
   const [cloudUrl, setCloudUrl] = useState('');
+  const [cloudUrlError, setCloudUrlError] = useState('');
   const [cloudUrlSaving, setCloudUrlSaving] = useState(false);
   const [cloudToken, setCloudToken] = useState('');
   const [cloudTokenSet, setCloudTokenSet] = useState(false);
@@ -99,6 +105,11 @@ export default function SettingsPage() {
   // Import
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+
+  // Diagnostics
+  const [errorCount, setErrorCount] = useState(0);
+  const [showErrors, setShowErrors] = useState(false);
+  const [recentErrors, setRecentErrors] = useState<{ id: string; timestamp: Date; message: string; component: string | null }[]>([]);
 
   // Load initial values
   useEffect(() => {
@@ -122,6 +133,14 @@ export default function SettingsPage() {
         setDriveConnected(googleDriveService.isSignedIn());
       } catch {
         // Settings not ready yet
+      }
+
+      // Error count
+      try {
+        const count = await errorLogger.getCount();
+        setErrorCount(count);
+      } catch {
+        // ignore
       }
 
       // Storage estimate
@@ -260,9 +279,15 @@ export default function SettingsPage() {
   // --- Cloud Sync handlers ---
 
   async function handleSaveCloudUrl() {
+    const trimmedUrl = cloudUrl.trim();
+    if (trimmedUrl && !trimmedUrl.startsWith('https://')) {
+      setCloudUrlError('URL must start with https://');
+      return;
+    }
+    setCloudUrlError('');
     setCloudUrlSaving(true);
     try {
-      await saveCloudBackupUrl(cloudUrl.trim());
+      await saveCloudBackupUrl(trimmedUrl);
       const hasToken = await getCloudBackupToken();
       setCloudConfigured(!!cloudUrl.trim() && !!hasToken);
       addToast('Cloud Sync URL saved', 'success');
@@ -380,6 +405,29 @@ export default function SettingsPage() {
     setImporting(false);
     // Reset file input
     if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  // --- Diagnostics handlers ---
+
+  async function handleExportDiagnostics() {
+    try {
+      const diagnostics = await errorLogger.exportDiagnostics();
+      const date = new Date().toISOString().split('T')[0];
+      downloadJson(diagnostics, `smartmeetings-diagnostics-${date}.json`);
+      addToast('Diagnostics exported', 'success');
+    } catch {
+      addToast('Failed to export diagnostics', 'error');
+    }
+  }
+
+  async function handleShowErrors() {
+    if (showErrors) {
+      setShowErrors(false);
+      return;
+    }
+    const errors = await errorLogger.getRecent(20);
+    setRecentErrors(errors);
+    setShowErrors(true);
   }
 
   // --- Theme section ---
@@ -541,6 +589,38 @@ export default function SettingsPage() {
           </div>
         </section>
 
+        {/* --- AI Prompt Templates --- */}
+        <section className="overflow-hidden rounded-xl bg-white shadow-sm transition-shadow hover:shadow-md dark:bg-gray-800">
+          <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 dark:border-gray-700">
+            <SectionIcon icon={Brain} color="bg-gradient-to-br from-purple-500 to-pink-500" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              AI Prompt Templates
+            </h2>
+          </div>
+          <div className="px-5 py-4">
+            <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+              Customize the AI analysis prompt for different meeting types. Use <code className="rounded bg-gray-100 px-1 text-xs dark:bg-gray-700">{'${text}'}</code> where meeting content should be injected.
+            </p>
+            <PromptTemplateManager />
+          </div>
+        </section>
+
+        {/* --- Meeting Templates --- */}
+        <section className="overflow-hidden rounded-xl bg-white shadow-sm transition-shadow hover:shadow-md dark:bg-gray-800">
+          <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 dark:border-gray-700">
+            <SectionIcon icon={FileText} color="bg-gradient-to-br from-teal-500 to-cyan-500" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              Meeting Templates
+            </h2>
+          </div>
+          <div className="px-5 py-4">
+            <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+              Create templates to quickly start meetings with pre-filled tags, notes, and linked AI prompts.
+            </p>
+            <MeetingTemplateManager />
+          </div>
+        </section>
+
         {/* --- Google Drive Backup --- */}
         <section className="overflow-hidden rounded-xl bg-white shadow-sm transition-shadow hover:shadow-md dark:bg-gray-800">
           <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 dark:border-gray-700">
@@ -677,9 +757,9 @@ export default function SettingsPage() {
                 <input
                   type="text"
                   value={cloudUrl}
-                  onChange={(e) => setCloudUrl(e.target.value)}
+                  onChange={(e) => { setCloudUrl(e.target.value); setCloudUrlError(''); }}
                   placeholder="https://smartmeetings-sync.yourname.workers.dev"
-                  className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm transition-colors focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:focus:bg-gray-700"
+                  className={`flex-1 rounded-lg border bg-gray-50 px-3 py-2 text-sm transition-colors focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:bg-gray-700 dark:text-gray-100 dark:focus:bg-gray-700 ${cloudUrlError ? 'border-red-400 dark:border-red-500' : 'border-gray-200 focus:border-brand-400 dark:border-gray-600'}`}
                   aria-label="Cloud Sync Worker URL"
                 />
                 <button
@@ -695,6 +775,9 @@ export default function SettingsPage() {
                   Save
                 </button>
               </div>
+              {cloudUrlError && (
+                <p className="mt-1 text-xs text-red-500">{cloudUrlError}</p>
+              )}
             </div>
 
             {/* Sync Token */}
@@ -864,17 +947,59 @@ export default function SettingsPage() {
               About
             </h2>
           </div>
-          <div className="px-5 py-4">
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-              SmartMeetings v2.0
-            </p>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Intelligent meeting notes with AI-powered analysis
-            </p>
-            <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
-              All data is stored locally on your device. API keys and tokens are encrypted at rest.
-              Cloud sync and Google Drive backup are optional and manually triggered.
-            </p>
+          <div className="space-y-4 px-5 py-4">
+            <div>
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                SmartMeetings v2.0
+              </p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Intelligent meeting notes with AI-powered analysis
+              </p>
+              <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+                All data is stored locally on your device. API keys and tokens are encrypted at rest.
+                Cloud sync and Google Drive backup are optional and manually triggered.
+              </p>
+            </div>
+
+            {/* Diagnostics */}
+            <div className="border-t border-gray-100 pt-4 dark:border-gray-700">
+              <h3 className="mb-2 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                Diagnostics
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={handleExportDiagnostics}
+                  className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  <Download size={14} />
+                  Export Debug Info
+                </button>
+                <button
+                  onClick={handleShowErrors}
+                  className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  {showErrors ? 'Hide Errors' : `View Errors (${errorCount})`}
+                </button>
+              </div>
+
+              {showErrors && (
+                <div className="mt-3 max-h-60 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-600 dark:bg-gray-700/50">
+                  {recentErrors.length === 0 ? (
+                    <p className="text-xs text-gray-400">No errors recorded.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {recentErrors.map(err => (
+                        <div key={err.id} className="text-xs">
+                          <span className="text-gray-400">{err.timestamp.toLocaleString()}</span>
+                          {err.component && <span className="ml-1 text-gray-500">[{err.component}]</span>}
+                          <p className="text-gray-700 dark:text-gray-300">{err.message}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </section>
       </div>

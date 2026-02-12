@@ -1,5 +1,5 @@
 import { db } from '../db/database';
-import type { Meeting, SyncOperation } from '../db/database';
+import type { Meeting, MeetingTemplate, SyncOperation } from '../db/database';
 
 export class MeetingRepository {
   /** Quick-create: auto-generate title, navigate to editor */
@@ -17,6 +17,31 @@ export class MeetingRepository {
       stakeholderIds: [],
       status: 'draft',
       notes: '',
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    });
+
+    await this.queueSync('create', id);
+    return id;
+  }
+
+  /** Quick-create from a meeting template: pre-fill tags, stakeholders, notes */
+  async quickCreateFromTemplate(template: MeetingTemplate): Promise<string> {
+    const id = crypto.randomUUID();
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const title = `${template.name} — ${dateStr}`;
+
+    await db.meetings.add({
+      id,
+      title,
+      date: now,
+      participants: [],
+      tags: [...template.defaultTags],
+      stakeholderIds: [...template.defaultStakeholderIds],
+      status: 'draft',
+      notes: template.defaultNotes,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
