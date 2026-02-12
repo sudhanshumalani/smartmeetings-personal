@@ -6,10 +6,12 @@ import {
   FileText,
   Users,
   Tag,
+  ListTodo,
 } from 'lucide-react';
 import { meetingRepository } from '../../../services/meetingRepository';
 import { stakeholderRepository } from '../../../services/stakeholderRepository';
 import { categoryRepository } from '../../../services/categoryRepository';
+import { taskRepository } from '../../../services/taskRepository';
 import { useToast } from '../../../contexts/ToastContext';
 import ConfirmDialog from '../../../shared/components/ConfirmDialog';
 import EmptyState from '../../../shared/components/EmptyState';
@@ -17,7 +19,7 @@ import EmptyState from '../../../shared/components/EmptyState';
 interface TrashItem {
   id: string;
   name: string;
-  entityType: 'meeting' | 'stakeholder' | 'category';
+  entityType: 'meeting' | 'stakeholder' | 'category' | 'task';
   deletedAt: Date;
 }
 
@@ -56,6 +58,12 @@ const entityConfig = {
     badgeClass:
       'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
   },
+  task: {
+    label: 'Task',
+    icon: ListTodo,
+    badgeClass:
+      'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  },
 };
 
 export default function TrashPage() {
@@ -71,6 +79,7 @@ export default function TrashPage() {
     stakeholderRepository.getDeleted(),
   );
   const deletedCategories = useLiveQuery(() => categoryRepository.getDeleted());
+  const deletedTasks = useLiveQuery(() => taskRepository.getDeleted());
 
   const allItems: TrashItem[] = [
     ...(deletedMeetings ?? []).map((m) => ({
@@ -91,6 +100,12 @@ export default function TrashPage() {
       entityType: 'category' as const,
       deletedAt: c.deletedAt!,
     })),
+    ...(deletedTasks ?? []).map((t) => ({
+      id: t.id,
+      name: t.title,
+      entityType: 'task' as const,
+      deletedAt: t.deletedAt!,
+    })),
   ];
 
   const meetingItems = allItems.filter((i) => i.entityType === 'meeting');
@@ -98,6 +113,7 @@ export default function TrashPage() {
     (i) => i.entityType === 'stakeholder',
   );
   const categoryItems = allItems.filter((i) => i.entityType === 'category');
+  const taskItems = allItems.filter((i) => i.entityType === 'task');
 
   async function handleRestore(item: TrashItem) {
     try {
@@ -105,6 +121,8 @@ export default function TrashPage() {
         await meetingRepository.restore(item.id);
       } else if (item.entityType === 'stakeholder') {
         await stakeholderRepository.restore(item.id);
+      } else if (item.entityType === 'task') {
+        await taskRepository.restore(item.id);
       } else {
         await categoryRepository.restore(item.id);
       }
@@ -124,6 +142,8 @@ export default function TrashPage() {
             await meetingRepository.permanentDelete(item.id);
           } else if (item.entityType === 'stakeholder') {
             await stakeholderRepository.permanentDelete(item.id);
+          } else if (item.entityType === 'task') {
+            await taskRepository.permanentDelete(item.id);
           } else {
             await categoryRepository.permanentDelete(item.id);
           }
@@ -147,6 +167,8 @@ export default function TrashPage() {
               await meetingRepository.restore(item.id);
             } else if (item.entityType === 'stakeholder') {
               await stakeholderRepository.restore(item.id);
+            } else if (item.entityType === 'task') {
+              await taskRepository.restore(item.id);
             } else {
               await categoryRepository.restore(item.id);
             }
@@ -171,6 +193,8 @@ export default function TrashPage() {
               await meetingRepository.permanentDelete(item.id);
             } else if (item.entityType === 'stakeholder') {
               await stakeholderRepository.permanentDelete(item.id);
+            } else if (item.entityType === 'task') {
+              await taskRepository.permanentDelete(item.id);
             } else {
               await categoryRepository.permanentDelete(item.id);
             }
@@ -275,6 +299,7 @@ export default function TrashPage() {
           {renderSection('Meetings', meetingItems)}
           {renderSection('Stakeholders', stakeholderItems)}
           {renderSection('Categories', categoryItems)}
+          {renderSection('Tasks', taskItems)}
         </>
       )}
 

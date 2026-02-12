@@ -18,6 +18,7 @@ const StakeholderListPage = lazy(() => import('../features/stakeholders/pages/St
 const StakeholderDetailPage = lazy(() => import('../features/stakeholders/pages/StakeholderDetailPage'));
 const SettingsPage = lazy(() => import('../features/settings/pages/SettingsPage'));
 const TrashPage = lazy(() => import('../features/settings/pages/TrashPage'));
+const TasksPage = lazy(() => import('../features/tasks/pages/TasksPage'));
 const ImportTranscriptionsPage = lazy(() => import('../features/transcripts/pages/ImportTranscriptionsPage'));
 
 function PageSkeleton() {
@@ -75,6 +76,7 @@ export default function App() {
                   <Route element={<Layout />}>
                     <Route index element={<ErrorBoundary><MeetingListPage /></ErrorBoundary>} />
                     <Route path="meetings/:id" element={<ErrorBoundary><MeetingDetailPage /></ErrorBoundary>} />
+                    <Route path="tasks" element={<ErrorBoundary><TasksPage /></ErrorBoundary>} />
                     <Route path="stakeholders" element={<ErrorBoundary><StakeholderListPage /></ErrorBoundary>} />
                     <Route path="stakeholders/:id" element={<ErrorBoundary><StakeholderDetailPage /></ErrorBoundary>} />
                     <Route path="settings" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />

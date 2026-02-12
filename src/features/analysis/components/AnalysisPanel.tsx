@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import {
   ChevronDown,
   ChevronRight,
@@ -6,11 +7,17 @@ import {
   CheckCircle2,
   HelpCircle,
   ShieldAlert,
+  ListPlus,
 } from 'lucide-react';
 import type { MeetingAnalysis } from '../../../db/database';
+import { taskRepository } from '../../../services/taskRepository';
+import { useToast } from '../../../contexts/ToastContext';
+import ActionItemTriage from './ActionItemTriage';
 
 interface AnalysisPanelProps {
   analysis: MeetingAnalysis;
+  meetingId?: string;
+  meetingTitle?: string;
 }
 
 const PRIORITY_STYLES: Record<string, string> = {
@@ -34,7 +41,60 @@ const TYPE_CONFIG: Record<string, { icon: typeof AlertTriangle; style: string }>
   },
 };
 
-export default function AnalysisPanel({ analysis }: AnalysisPanelProps) {
+export default function AnalysisPanel({ analysis, meetingId, meetingTitle }: AnalysisPanelProps) {
+  const { addToast } = useToast();
+  const addedIndices = useLiveQuery(
+    () => taskRepository.getAddedActionItemIndices(analysis.id),
+    [analysis.id],
+  );
+
+  async function handleAddTask(
+    index: number,
+    type: 'task' | 'followup',
+    edits: { title: string; followUpTarget: string; deadline: string; priority: 'high' | 'medium' | 'low' },
+  ) {
+    await taskRepository.create({
+      meetingId: meetingId || analysis.meetingId,
+      analysisId: analysis.id,
+      type,
+      title: edits.title,
+      description: analysis.actionItems[index]?.context || '',
+      owner: analysis.actionItems[index]?.owner || '',
+      deadline: edits.deadline,
+      priority: edits.priority,
+      followUpTarget: type === 'followup' ? edits.followUpTarget : '',
+      sourceMeetingTitle: meetingTitle || '',
+      sourceActionItemIndex: index,
+    });
+    addToast(`Added as ${type === 'task' ? 'My Task' : 'Follow-up'}`, 'success');
+  }
+
+  async function handleAddAllAsTasks() {
+    const indices = addedIndices ?? new Set<number>();
+    const inputs = analysis.actionItems
+      .map((item, i) => ({ item, i }))
+      .filter(({ i }) => !indices.has(i))
+      .map(({ item, i }) => ({
+        meetingId: meetingId || analysis.meetingId,
+        analysisId: analysis.id,
+        type: 'task' as const,
+        title: item.task,
+        description: item.context || '',
+        owner: item.owner,
+        deadline: item.deadline,
+        priority: item.priority,
+        followUpTarget: '',
+        sourceMeetingTitle: meetingTitle || '',
+        sourceActionItemIndex: i,
+      }));
+    if (inputs.length === 0) {
+      addToast('All action items already added', 'info');
+      return;
+    }
+    await taskRepository.createMany(inputs);
+    addToast(`Added ${inputs.length} task${inputs.length !== 1 ? 's' : ''}`, 'success');
+  }
+
   return (
     <div className="space-y-6">
       {/* Summary */}
@@ -90,38 +150,59 @@ export default function AnalysisPanel({ analysis }: AnalysisPanelProps) {
         </section>
       )}
 
-      {/* Action Items */}
+      {/* Action Items with Triage */}
       {analysis.actionItems.length > 0 && (
         <section>
-          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-            Action Items ({analysis.actionItems.length})
-          </h3>
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Action Items ({analysis.actionItems.length})
+            </h3>
+            {meetingId && (
+              <button
+                onClick={handleAddAllAsTasks}
+                className="inline-flex items-center gap-1 rounded-lg bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100 dark:bg-brand-900/30 dark:text-brand-300 dark:hover:bg-brand-900/50"
+              >
+                <ListPlus size={12} />
+                Add All as My Tasks
+              </button>
+            )}
+          </div>
           <div className="space-y-2">
             {analysis.actionItems.map((item, i) => (
-              <div
-                key={i}
-                className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                      {item.task}
-                    </p>
-                    <div className="mt-1 flex flex-wrap gap-3 text-xs text-gray-500 dark:text-gray-400">
-                      <span><strong>Owner:</strong> {item.owner}</span>
-                      <span><strong>Deadline:</strong> {item.deadline}</span>
+              meetingId ? (
+                <ActionItemTriage
+                  key={i}
+                  item={item}
+                  index={i}
+                  isAdded={addedIndices?.has(i) ?? false}
+                  onAdd={handleAddTask}
+                />
+              ) : (
+                <div
+                  key={i}
+                  className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                        {item.task}
+                      </p>
+                      <div className="mt-1 flex flex-wrap gap-3 text-xs text-gray-500 dark:text-gray-400">
+                        <span><strong>Owner:</strong> {item.owner}</span>
+                        <span><strong>Deadline:</strong> {item.deadline}</span>
+                      </div>
+                      {item.context && (
+                        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">{item.context}</p>
+                      )}
                     </div>
-                    {item.context && (
-                      <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">{item.context}</p>
-                    )}
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${PRIORITY_STYLES[item.priority] || PRIORITY_STYLES.medium}`}
+                    >
+                      {item.priority}
+                    </span>
                   </div>
-                  <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${PRIORITY_STYLES[item.priority] || PRIORITY_STYLES.medium}`}
-                  >
-                    {item.priority}
-                  </span>
                 </div>
-              </div>
+              )
             ))}
           </div>
         </section>

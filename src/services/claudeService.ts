@@ -8,6 +8,16 @@ import { getClaudeApiKey } from './settingsService';
 
 // --- Types ---
 
+export interface IntelligenceQuery {
+  dateRange: { from: string | null; to: string | null };
+  stakeholders: string[];
+  keywords: string[];
+  topics: string[];
+  participants: string[];
+  status: string | null;
+  tags: string[];
+}
+
 export interface AnalysisResult {
   summary: string;
   themes: { topic: string; keyPoints: string[]; context: string }[];
@@ -199,6 +209,71 @@ export class ClaudeService {
     }
 
     return this.parseAndValidate(jsonText);
+  }
+
+  /** Parse a natural language query into structured filters for meeting search. */
+  async parseNaturalLanguageQuery(query: string): Promise<IntelligenceQuery> {
+    if (!this.client) {
+      throw new Error('Claude API key not configured');
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const systemPrompt = `You are a query parser for a meeting notes app. Today's date is ${today}.
+
+Extract structured filters from the user's natural language query. Return a JSON object:
+{
+  "dateRange": { "from": "YYYY-MM-DD" or null, "to": "YYYY-MM-DD" or null },
+  "stakeholders": ["name1", ...],
+  "keywords": ["keyword1", ...],
+  "topics": ["topic1", ...],
+  "participants": ["name1", ...],
+  "status": "draft" | "in-progress" | "completed" | null,
+  "tags": ["tag1", ...]
+}
+
+Rules:
+- Convert relative dates: "last week" = 7 days ago to today, "last month" = 30 days ago, "yesterday" = yesterday, "this week" = Monday of this week to today
+- Put person names in both stakeholders AND participants (the user may not know which field was used)
+- Extract topics/subjects as both keywords AND topics for broader matching
+- status should only be set if explicitly mentioned (e.g., "completed meetings", "drafts")
+- Be generous with keywords — extract any meaningful search terms
+
+Return ONLY valid JSON, no markdown code blocks.`;
+
+    const response = await this.client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      temperature: 0,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: query }],
+    });
+
+    const content = response.content[0];
+    if (content.type !== 'text') {
+      throw new Error('Unexpected response format');
+    }
+
+    let jsonText = content.text.trim();
+    if (jsonText.startsWith('```')) {
+      jsonText = jsonText.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+    }
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch {
+      throw new Error('Failed to parse query response');
+    }
+
+    return {
+      dateRange: parsed.dateRange ?? { from: null, to: null },
+      stakeholders: Array.isArray(parsed.stakeholders) ? parsed.stakeholders : [],
+      keywords: Array.isArray(parsed.keywords) ? parsed.keywords : [],
+      topics: Array.isArray(parsed.topics) ? parsed.topics : [],
+      participants: Array.isArray(parsed.participants) ? parsed.participants : [],
+      status: parsed.status ?? null,
+      tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+    };
   }
 
   /** Build the full prompt with meeting text injected — for copy-paste workflow. */

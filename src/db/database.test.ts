@@ -32,6 +32,7 @@ describe('SmartMeetingsDB', () => {
       'stakeholderCategories',
       'stakeholders',
       'syncQueue',
+      'tasks',
       'transcripts',
     ]);
     db.close();

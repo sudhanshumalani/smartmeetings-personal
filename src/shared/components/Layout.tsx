@@ -16,10 +16,13 @@ import {
   CloudUpload,
   Loader2,
   Sparkles,
+  ListTodo,
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useOnline } from '../../contexts/OnlineContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../../db/database';
 import { syncService } from '../../services/syncService';
 import { meetingRepository } from '../../services/meetingRepository';
 import useKeyboardShortcuts from '../hooks/useKeyboardShortcuts';
@@ -28,6 +31,7 @@ import OfflineIndicator from './OfflineIndicator';
 
 const navLinks = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/tasks', label: 'Tasks', icon: ListTodo },
   { to: '/stakeholders', label: 'Stakeholders', icon: Users },
   { to: '/import', label: 'Import', icon: Download },
   { to: '/settings', label: 'Settings', icon: Settings },
@@ -152,6 +156,10 @@ export default function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
 
+  const pendingTaskCount = useLiveQuery(
+    () => db.tasks.filter(t => t.deletedAt === null && t.status === 'todo').count(),
+  );
+
   const shortcutActions = useMemo(() => ({
     onNewMeeting: async () => {
       const id = await meetingRepository.quickCreate();
@@ -160,6 +168,9 @@ export default function Layout() {
     onFocusSearch: () => {
       const searchInput = document.querySelector<HTMLInputElement>('[data-search-input]');
       searchInput?.focus();
+    },
+    onGoToTasks: () => {
+      navigate('/tasks');
     },
   }), [navigate]);
 
@@ -196,7 +207,7 @@ export default function Layout() {
                 to={link.to}
                 end={link.to === '/'}
                 className={({ isActive }) =>
-                  `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
+                  `relative flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
                     isActive
                       ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300'
                       : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200'
@@ -205,6 +216,11 @@ export default function Layout() {
               >
                 <link.icon size={16} />
                 {link.label}
+                {link.to === '/tasks' && !!pendingTaskCount && pendingTaskCount > 0 && (
+                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-bold text-white">
+                    {pendingTaskCount > 99 ? '99+' : pendingTaskCount}
+                  </span>
+                )}
               </NavLink>
             ))}
           </nav>

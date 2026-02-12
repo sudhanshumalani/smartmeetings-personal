@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 interface ShortcutActions {
   onNewMeeting?: () => void;
   onFocusSearch?: () => void;
+  onGoToTasks?: () => void;
 }
 
 export default function useKeyboardShortcuts(actions: ShortcutActions) {
@@ -25,6 +26,12 @@ export default function useKeyboardShortcuts(actions: ShortcutActions) {
       if (mod && e.key === 'k') {
         e.preventDefault();
         actions.onFocusSearch?.();
+        return;
+      }
+
+      if (mod && e.shiftKey && (e.key === 't' || e.key === 'T')) {
+        e.preventDefault();
+        actions.onGoToTasks?.();
         return;
       }
 

@@ -341,6 +341,7 @@ export default function MeetingDetailPage() {
         <AnalysisTab
           meetingId={id}
           notesPlainText={tiptapJsonToPlainText(meeting.notes)}
+          meetingTitle={meeting.title}
         />
       )}
 

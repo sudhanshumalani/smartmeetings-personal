@@ -166,6 +166,7 @@ export class SyncService {
       { entity: 'stakeholderCategory', getData: () => db.stakeholderCategories.toArray() },
       { entity: 'transcript', getData: () => db.transcripts.toArray() },
       { entity: 'meetingAnalysis', getData: () => db.meetingAnalyses.toArray() },
+      { entity: 'task', getData: () => db.tasks.toArray() },
     ];
 
     const changes: { entity: string; entityId: string; operation: string; payload: string; timestamp: string }[] = [];

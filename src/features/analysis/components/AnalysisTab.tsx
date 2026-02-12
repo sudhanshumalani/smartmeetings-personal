@@ -16,9 +16,10 @@ import CopyPasteModal from './CopyPasteModal';
 interface AnalysisTabProps {
   meetingId: string;
   notesPlainText: string;
+  meetingTitle: string;
 }
 
-export default function AnalysisTab({ meetingId, notesPlainText }: AnalysisTabProps) {
+export default function AnalysisTab({ meetingId, notesPlainText, meetingTitle }: AnalysisTabProps) {
   const { isOnline } = useOnline();
   const { addToast } = useToast();
 
@@ -271,7 +272,7 @@ export default function AnalysisTab({ meetingId, notesPlainText }: AnalysisTabPr
 
       {/* Existing analysis display */}
       {hasExistingAnalysis && existingAnalysis && (
-        <AnalysisPanel analysis={existingAnalysis} />
+        <AnalysisPanel analysis={existingAnalysis} meetingId={meetingId} meetingTitle={meetingTitle} />
       )}
 
       {/* Empty state */}

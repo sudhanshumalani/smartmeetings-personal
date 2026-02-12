@@ -11,6 +11,7 @@ import {
   Search,
   CheckSquare,
   X,
+  Sparkles,
 } from 'lucide-react';
 import { db } from '../../../db/database';
 import type { Meeting, StakeholderCategory } from '../../../db/database';
@@ -26,6 +27,9 @@ import FilterPanel, {
   hasActiveFilters,
   type Filters,
 } from '../components/FilterPanel';
+import IntelligenceSearchBar from '../../search/components/IntelligenceSearchBar';
+import IntelligenceResultCard from '../../search/components/IntelligenceResultCard';
+import type { IntelligenceResult } from '../../../services/meetingIntelligenceService';
 
 type SortOption = 'date' | 'title' | 'lastModified' | 'stakeholder';
 
@@ -116,6 +120,11 @@ export default function MeetingListPage() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // AI search state
+  const [aiSearchMode, setAiSearchMode] = useState(false);
+  const [aiResults, setAiResults] = useState<IntelligenceResult[] | null>(null);
+  const [aiError, setAiError] = useState('');
 
   const debouncedSearch = useDebounce(searchQuery, 300);
 
@@ -455,8 +464,37 @@ export default function MeetingListPage() {
 
         {/* Search + Filter + Sort row */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="flex-1">
-            <SearchBar value={searchQuery} onChange={setSearchQuery} />
+          <div className="flex flex-1 items-center gap-2">
+            {aiSearchMode ? (
+              <div className="flex-1">
+                <IntelligenceSearchBar
+                  onResults={(results) => setAiResults(results)}
+                  onClear={() => setAiResults(null)}
+                  onError={(err) => setAiError(err)}
+                />
+              </div>
+            ) : (
+              <div className="flex-1">
+                <SearchBar value={searchQuery} onChange={setSearchQuery} />
+              </div>
+            )}
+            <button
+              onClick={() => {
+                setAiSearchMode(!aiSearchMode);
+                setAiResults(null);
+                setAiError('');
+                setSearchQuery('');
+              }}
+              className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+                aiSearchMode
+                  ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300'
+                  : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'
+              }`}
+              title={aiSearchMode ? 'Switch to simple search' : 'Switch to AI search'}
+            >
+              <Sparkles size={16} />
+              <span className="hidden sm:inline">AI</span>
+            </button>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -506,8 +544,29 @@ export default function MeetingListPage() {
         )}
       </div>
 
-      {/* Content */}
-      {isLoading ? (
+      {/* AI Search Results */}
+      {aiSearchMode && aiError && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+          {aiError}
+        </div>
+      )}
+
+      {aiSearchMode && aiResults !== null ? (
+        aiResults.length === 0 ? (
+          <EmptyState
+            icon={<Sparkles size={48} />}
+            title="No matching meetings"
+            description="Try a different query or broaden your search."
+          />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {aiResults.map(result => (
+              <IntelligenceResultCard key={result.meeting.id} result={result} />
+            ))}
+          </div>
+        )
+      ) : /* Content */
+      isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <SkeletonCard key={i} />

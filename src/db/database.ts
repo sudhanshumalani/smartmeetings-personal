@@ -133,6 +133,28 @@ export interface MeetingAnalysis {
   deletedAt: Date | null;
 }
 
+export type TaskType = 'task' | 'followup';
+export type TaskStatus = 'todo' | 'done';
+
+export interface Task {
+  id: string;
+  meetingId: string;
+  analysisId: string;
+  type: TaskType;
+  title: string;
+  description: string;
+  owner: string;
+  deadline: string;
+  priority: 'high' | 'medium' | 'low';
+  status: TaskStatus;
+  followUpTarget: string;
+  sourceMeetingTitle: string;
+  sourceActionItemIndex: number;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}
+
 export interface PromptTemplate {
   id: string;
   name: string;
@@ -180,7 +202,7 @@ export interface AppSettings {
 }
 
 export type SyncOperation = 'create' | 'update' | 'delete';
-export type SyncEntity = 'meeting' | 'stakeholder' | 'stakeholderCategory' | 'audioRecording' | 'transcript' | 'meetingAnalysis';
+export type SyncEntity = 'meeting' | 'stakeholder' | 'stakeholderCategory' | 'audioRecording' | 'transcript' | 'meetingAnalysis' | 'task';
 
 export interface SyncQueueItem {
   id: string;
@@ -207,6 +229,7 @@ export class SmartMeetingsDB extends Dexie {
   syncQueue!: Table<SyncQueueItem>;
   promptTemplates!: Table<PromptTemplate>;
   meetingTemplates!: Table<MeetingTemplate>;
+  tasks!: Table<Task>;
   errorLogs!: Table<ErrorLog>;
 
   constructor() {
@@ -253,6 +276,22 @@ export class SmartMeetingsDB extends Dexie {
       promptTemplates: 'id, name, isDefault, createdAt, deletedAt',
       meetingTemplates: 'id, name, createdAt, deletedAt',
       errorLogs: 'id, timestamp',
+    });
+
+    this.version(4).stores({
+      meetings: 'id, date, status, *tags, *stakeholderIds, createdAt, updatedAt, deletedAt',
+      stakeholders: 'id, name, *categoryIds, createdAt, updatedAt, deletedAt',
+      stakeholderCategories: 'id, name, createdAt, deletedAt',
+      audioRecordings: 'id, meetingId, order, createdAt, updatedAt, deletedAt',
+      audioChunkBuffers: 'id, sessionId, meetingId, chunkIndex',
+      transcripts: 'id, meetingId, audioRecordingId, createdAt, updatedAt, deletedAt',
+      meetingAnalyses: 'id, meetingId, createdAt, deletedAt',
+      appSettings: 'id',
+      syncQueue: 'id, entity, entityId, createdAt, syncedAt',
+      promptTemplates: 'id, name, isDefault, createdAt, deletedAt',
+      meetingTemplates: 'id, name, createdAt, deletedAt',
+      errorLogs: 'id, timestamp',
+      tasks: 'id, meetingId, analysisId, type, status, priority, deadline, createdAt, updatedAt, deletedAt',
     });
   }
 }

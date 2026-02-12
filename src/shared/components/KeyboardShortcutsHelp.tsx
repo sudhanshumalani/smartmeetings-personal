@@ -7,6 +7,7 @@ const modKey = isMac ? '⌘' : 'Ctrl';
 const shortcuts = [
   { keys: `${modKey} + N`, description: 'Create new meeting' },
   { keys: `${modKey} + K`, description: 'Focus search bar' },
+  { keys: `${modKey} + Shift + T`, description: 'Go to Tasks' },
   { keys: '/', description: 'Focus search bar (when not typing)' },
   { keys: '?', description: 'Show this help' },
   { keys: 'Esc', description: 'Close modal / dialog' },
