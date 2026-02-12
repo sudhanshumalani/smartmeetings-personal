@@ -184,7 +184,8 @@ describe('ClaudeService', () => {
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({
           model: 'claude-haiku-4-5-20251001',
-          max_tokens: 4096,
+          max_tokens: 12288,
+          temperature: 0.1,
           messages: [{ role: 'user', content: expect.stringContaining('Meeting content') }],
         }),
       );

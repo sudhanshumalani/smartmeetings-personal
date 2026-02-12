@@ -128,7 +128,7 @@ describe('AudioRecorderService', () => {
   // --- startRecording ---
 
   describe('startRecording', () => {
-    it('creates a session and begins chunk persistence', async () => {
+    it('creates a session and collects chunks in memory', async () => {
       await service.startRecording('meeting-1');
 
       expect(mockGetUserMedia).toHaveBeenCalledWith({
@@ -141,21 +141,21 @@ describe('AudioRecorderService', () => {
       expect(service.isRecording()).toBe(true);
       expect(service.getSessionId()).toBeTruthy();
 
-      // Simulate data available
+      // Simulate data available — chunks go to memory only (not IndexedDB)
       const chunkData = new Blob(['audio-data'], { type: 'audio/webm' });
       ondataavailable!({ data: chunkData });
 
-      // Wait for async persist
       await new Promise(r => setTimeout(r, 50));
 
-      const chunks = await db.audioChunkBuffers.toArray();
-      expect(chunks.length).toBe(1);
-      expect(chunks[0].meetingId).toBe('meeting-1');
-      expect(chunks[0].sessionId).toBe(service.getSessionId());
-      expect(chunks[0].chunkIndex).toBe(0);
+      // Memory-only: NO IndexedDB writes during recording
+      const dbChunks = await db.audioChunkBuffers.toArray();
+      expect(dbChunks.length).toBe(0);
+
+      // Internal chunks array should have data (verified via stopRecording producing a blob)
+      expect((service as any).chunks.length).toBe(1);
     });
 
-    it('persists multiple chunks with incrementing index', async () => {
+    it('collects multiple chunks in memory', async () => {
       await service.startRecording('meeting-1');
 
       const chunkData1 = new Blob(['chunk-1'], { type: 'audio/webm' });
@@ -163,15 +163,13 @@ describe('AudioRecorderService', () => {
       const chunkData3 = new Blob(['chunk-3'], { type: 'audio/webm' });
 
       ondataavailable!({ data: chunkData1 });
-      await new Promise(r => setTimeout(r, 10));
       ondataavailable!({ data: chunkData2 });
-      await new Promise(r => setTimeout(r, 10));
       ondataavailable!({ data: chunkData3 });
-      await new Promise(r => setTimeout(r, 10));
 
-      const chunks = await db.audioChunkBuffers.toArray();
-      expect(chunks.length).toBe(3);
-      expect(chunks.map(c => c.chunkIndex).sort()).toEqual([0, 1, 2]);
+      // Chunks in memory, not IndexedDB
+      expect((service as any).chunks.length).toBe(3);
+      const dbChunks = await db.audioChunkBuffers.toArray();
+      expect(dbChunks.length).toBe(0);
     });
 
     it('ignores empty chunks', async () => {

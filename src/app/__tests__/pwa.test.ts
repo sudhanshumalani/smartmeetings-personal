@@ -29,7 +29,7 @@ describe('PWA & Offline', () => {
       expect(config).toContain("short_name: 'SmartMeetings'");
       expect(config).toContain("theme_color: '#3b82f6'");
       expect(config).toContain("display: 'standalone'");
-      expect(config).toContain("start_url: '/'");
+      expect(config).toContain("start_url: '/smartmeetings-personal/'");
 
       // Icons
       expect(config).toContain('pwa-192x192.png');
@@ -105,15 +105,19 @@ describe('PWA & Offline', () => {
 
   describe('Mobile CSS', () => {
     it('has safe area insets for iOS notch', async () => {
+      // Safe area insets are applied in MobileApp.tsx via inline styles
+      // (max(1rem, env(safe-area-inset-*))) and in index.html via viewport-fit=cover
       const fs = await import('node:fs');
       const path = await import('node:path');
-      const cssPath = path.resolve(__dirname, '../../index.css');
-      const css = fs.readFileSync(cssPath, 'utf-8');
+      const htmlPath = path.resolve(__dirname, '../../../index.html');
+      const html = fs.readFileSync(htmlPath, 'utf-8');
 
-      expect(css).toContain('env(safe-area-inset-top)');
-      expect(css).toContain('env(safe-area-inset-bottom)');
-      expect(css).toContain('env(safe-area-inset-left)');
-      expect(css).toContain('env(safe-area-inset-right)');
+      expect(html).toContain('viewport-fit=cover');
+
+      // MobileApp.tsx handles safe-area insets via inline styles
+      const mobileAppPath = path.resolve(__dirname, '../../features/mobile/MobileApp.tsx');
+      const mobileApp = fs.readFileSync(mobileAppPath, 'utf-8');
+      expect(mobileApp).toContain('safe-area-inset');
     });
 
     it('has mobile touch target styles', async () => {
@@ -238,9 +242,9 @@ describe('PWA & Offline', () => {
       const code = fs.readFileSync(hookPath, 'utf-8');
 
       expect(code).toContain('useIsMobile');
-      expect(code).toContain("matchMedia('(max-width: 768px)')");
-      expect(code).toContain('addEventListener');
-      expect(code).toContain('removeEventListener');
+      // useIsMobile now uses iOS detection (user agent) instead of media query
+      expect(code).toContain('detectIOS');
+      expect(code).toContain('navigator');
     });
   });
 });

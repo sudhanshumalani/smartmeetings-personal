@@ -2,7 +2,7 @@
 
 > **Progressive Web App for Intelligent Meeting Notes Management**
 >
-> Version: 2.2 | Last updated: 2026-02-11
+> Version: 2.3 | Last updated: 2026-02-11
 
 ---
 
@@ -62,7 +62,7 @@ These rules override any implementation instinct. Violating them is how the last
 
 | Layer | Technology | Purpose |
 |---|---|---|
-| **Framework** | React 18+ / TypeScript | UI components, type safety |
+| **Framework** | React 19 / TypeScript 5.9 | UI components, type safety |
 | **Build Tool** | Vite | Fast dev server, optimized builds |
 | **Styling** | Tailwind CSS | Utility-first styling, small production bundle |
 | **Data Persistence** | Dexie.js (IndexedDB) | Offline-first structured storage — the ONE storage layer |
@@ -71,7 +71,7 @@ These rules override any implementation instinct. Violating them is how the last
 | **Audio Transcription** | AssemblyAI REST API (batch) | Speaker diarization via pre-recorded audio upload |
 | **State Management** | React Context (ephemeral UI) + Dexie (persisted data) | No Zustand, no Redux. Context for theme/toasts/modals. |
 | **PWA** | vite-plugin-pwa + Workbox | Service worker, precaching, offline support |
-| **Routing** | React Router v6 | Client-side navigation |
+| **Routing** | React Router v7 | Client-side navigation |
 | **Encryption** | Web Crypto API (AES-GCM) | API key obfuscation at rest |
 | **Cloud Backup** | Cloudflare D1 + Workers | One-way sync, outbox pattern, manual trigger |
 | **Icons** | Lucide React | Consistent icon set |
@@ -275,6 +275,7 @@ interface AppSettings {
   claudeApiKey: string;                  // Encrypted via Web Crypto API
   assemblyaiApiKey: string;              // Encrypted
   theme: ThemeMode;
+  googleClientId: string;                // Google OAuth Client ID for Drive backup
   cloudBackupUrl: string;                // Cloudflare Worker URL
   cloudBackupToken: string;              // Encrypted bearer token
   encryptionKeyMaterial: string;         // Base64 AES-GCM key material (auto-generated)
@@ -283,7 +284,52 @@ interface AppSettings {
 }
 ```
 
-### 4.9 SyncQueue (Outbox Pattern)
+### 4.9 PromptTemplate
+
+```typescript
+interface PromptTemplate {
+  id: string;
+  name: string;                // e.g. "General Meeting", "Standup / Daily Sync"
+  content: string;             // Full prompt with ${text} placeholder
+  isDefault: boolean;          // Only one template can be default
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}
+```
+
+**Built-in templates** (seeded on first launch): General Meeting, Standup / Daily Sync, 1:1 Meeting, Strategy / Board Meeting.
+
+### 4.10 MeetingTemplate
+
+```typescript
+interface MeetingTemplate {
+  id: string;
+  name: string;                // e.g. "Weekly Standup", "Board Meeting"
+  defaultTags: string[];
+  defaultStakeholderIds: string[];
+  defaultNotes: string;        // TipTap JSON format
+  promptTemplateId: string | null;  // FK → PromptTemplate.id
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}
+```
+
+### 4.11 ErrorLog
+
+```typescript
+interface ErrorLog {
+  id: string;
+  timestamp: Date;
+  message: string;
+  stack: string | null;
+  component: string | null;
+  action: string | null;
+}
+```
+
+### 4.12 SyncQueue (Outbox Pattern)
 
 ```typescript
 type SyncOperation = 'create' | 'update' | 'delete';
@@ -301,7 +347,7 @@ interface SyncQueueItem {
 }
 ```
 
-### 4.10 Dexie Database Schema
+### 4.13 Dexie Database Schema
 
 ```typescript
 import Dexie, { Table } from 'dexie';
@@ -316,9 +362,13 @@ class SmartMeetingsDB extends Dexie {
   meetingAnalyses!: Table<MeetingAnalysis>;
   appSettings!: Table<AppSettings>;
   syncQueue!: Table<SyncQueueItem>;
+  promptTemplates!: Table<PromptTemplate>;
+  meetingTemplates!: Table<MeetingTemplate>;
+  errorLogs!: Table<ErrorLog>;
 
   constructor() {
     super('SmartMeetingsDB');
+    // Version 1: Original 9 tables
     this.version(1).stores({
       meetings: 'id, date, status, *tags, *stakeholderIds, createdAt, updatedAt, deletedAt',
       stakeholders: 'id, name, *categoryIds, createdAt, updatedAt, deletedAt',
@@ -329,6 +379,15 @@ class SmartMeetingsDB extends Dexie {
       meetingAnalyses: 'id, meetingId, createdAt, deletedAt',
       appSettings: 'id',
       syncQueue: 'id, entity, entityId, createdAt, syncedAt',
+    });
+    // Version 2: Add cloudBackupUrl/Token to AppSettings
+    this.version(2).stores({/* same schema */}).upgrade(/*...*/);
+    // Version 3: Add promptTemplates, meetingTemplates, errorLogs
+    this.version(3).stores({
+      /* ...all existing tables... */
+      promptTemplates: 'id, name, isDefault, createdAt, deletedAt',
+      meetingTemplates: 'id, name, createdAt, deletedAt',
+      errorLogs: 'id, timestamp',
     });
   }
 }
@@ -396,19 +455,27 @@ src/
 │       ├── components/            # ApiKeyInput, ThemeToggle, ExportPanel, CloudBackupPanel
 │       └── pages/                 # SettingsPage (API keys, theme, Google Drive, cloud backup, export/import)
 ├── shared/
-│   ├── components/                # Header, OfflineIndicator, Toast, ConfirmDialog,
-│   │                              # EmptyState, TrashView
-│   ├── hooks/                     # useOnlineStatus, useDebounce, useToast
+│   ├── components/                # Layout, OfflineIndicator, Toast, ConfirmDialog,
+│   │                              # EmptyState, ErrorBoundary, PWAUpdatePrompt,
+│   │                              # KeyboardShortcutsHelp
+│   ├── hooks/                     # useIsMobile, useFocusTrap, useKeyboardShortcuts
 │   └── utils/                     # uuid, formatDate, etc.
 ├── services/
-│   ├── claudeService.ts           # Claude API integration
+│   ├── claudeService.ts           # Claude API integration (Haiku 4.5, prompt templates)
 │   ├── assemblyaiService.ts       # AssemblyAI REST API (upload → transcribe → poll)
-│   ├── audioRecorderService.ts    # MediaRecorder API wrapper with chunk persistence
+│   ├── audioRecorderService.ts    # MediaRecorder wrapper (memory-only chunks, triple-fallback stop)
 │   ├── meetingRepository.ts       # Dexie CRUD with soft deletes
 │   ├── stakeholderRepository.ts   # Stakeholder + category CRUD
-│   ├── syncService.ts             # Outbox queue + Cloudflare Worker push
-│   ├── encryption.ts              # Web Crypto API key encryption
-│   └── wakeLockService.ts         # Screen Wake Lock API + fallback
+│   ├── meetingTemplateRepository.ts # Meeting template CRUD
+│   ├── promptTemplateRepository.ts  # Prompt template CRUD
+│   ├── syncService.ts             # Outbox queue + Cloudflare Worker push/pull
+│   ├── googleDriveService.ts      # Google Drive backup/restore
+│   ├── exportService.ts           # JSON export/import
+│   ├── encryption.ts              # Web Crypto API key encryption (AES-GCM-256)
+│   ├── errorLogger.ts             # Persistent error logging to ErrorLog table
+│   ├── settingsService.ts         # App settings management (encrypted API keys)
+│   ├── tiptapUtils.ts             # TipTap JSON to plain text conversion
+│   └── wakeLockService.ts         # Screen Wake Lock API + silent audio fallback
 ├── contexts/
 │   ├── ThemeContext.tsx            # Light/dark/system theme
 │   ├── ToastContext.tsx            # Toast notification state
@@ -550,7 +617,7 @@ When sorting by **stakeholder**, meetings are grouped by the first linked stakeh
 | `/meetings/:id` | `MeetingDetailPage` | Tabbed meeting workspace (notes, audio, analysis) |
 | `/stakeholders` | `StakeholderListPage` | Stakeholder list with search and category filter (tabbed: Stakeholders / Categories) |
 | `/stakeholders/:id` | `StakeholderDetailPage` | Stakeholder detail + linked meetings |
-| `/settings` | `SettingsPage` | API keys, theme, Google Drive backup, cloud backup (Cloudflare), export/import |
+| `/settings` | `SettingsPage` | API keys, theme, Google Drive backup, cloud backup (Cloudflare), export/import, meeting templates, prompt templates |
 | `/trash` | `TrashPage` | Soft-deleted items, restore or permanent delete |
 
 **Meeting creation**: No `/meetings/new` route. Clicking "New Meeting" auto-creates a draft meeting with a default title ("Meeting — Feb 6, 2026") and navigates to `/meetings/:id`. User edits metadata inline on the detail page.
@@ -851,20 +918,12 @@ export class AudioRecorderService {
     this.meetingId = meetingId;
     this.sessionId = crypto.randomUUID();
 
-    this.mediaRecorder.ondataavailable = async (event) => {
+    // Collect chunks in memory only — no IndexedDB during recording.
+    // Old MeetingFlow app proved this is more reliable on iOS than writing
+    // to IndexedDB every second (avoids async timing issues + storage pressure).
+    this.mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
         this.chunks.push(event.data);
-
-        // Persist chunk to IndexedDB for crash recovery
-        await db.audioChunkBuffers.add({
-          id: crypto.randomUUID(),
-          sessionId: this.sessionId,
-          meetingId: this.meetingId,
-          chunkIndex: this.chunkIndex++,
-          data: event.data,
-          mimeType,
-          createdAt: new Date(),
-        });
       }
     };
 
@@ -1494,8 +1553,8 @@ getUserMedia({ audio: { echoCancellation, noiseSuppression, sampleRate: 16000 } 
     ▼
 MediaRecorder.start(1000)  // Chunk every 1 second
     │
-    ├── ondataavailable → push to in-memory chunks[]
-    │                    → persist chunk to audioChunkBuffers in Dexie (crash recovery)
+    ├── ondataavailable → push to in-memory chunks[] only
+    │                    (no IndexedDB writes during recording — proven more reliable on iOS)
     │
     ▼
 Recording controls visible:
@@ -1833,7 +1892,7 @@ Mobile is **capture-only mode**:
 | Cloud sync | Yes (manual) | Yes (manual) |
 | Export | No — do on desktop | Yes |
 
-**Implementation**: Mobile detection uses a `useIsMobile()` hook based on CSS media query matching, NOT user-agent sniffing. When `useIsMobile()` returns true, `App.tsx` renders `<MobileApp />` directly (bypassing `<Layout>` and React Router). This means Layout.tsx changes are invisible on iOS — all mobile UI fixes must target MobileApp.tsx.
+**Implementation**: Mobile detection uses a `useIsMobile()` hook that detects iOS devices via user-agent (`iPhone`, `iPod`, `iPad`, or `Macintosh` with touch). When `useIsMobile()` returns true, `App.tsx` renders `<MobileApp />` directly (bypassing `<Layout>` and React Router). This means Layout.tsx changes are invisible on iOS — all mobile UI fixes must target MobileApp.tsx. Desktop users on narrow windows see the full desktop UI, not the mobile capture mode.
 
 **Mobile responsive fixes applied:**
 - `html, body, #root`: `overflow-x: hidden; width: 100%` prevents horizontal scroll
@@ -1845,19 +1904,19 @@ Mobile is **capture-only mode**:
 
 ```typescript
 // shared/hooks/useIsMobile.ts
-function useIsMobile(): boolean {
-  const [isMobile, setIsMobile] = useState(
-    () => window.matchMedia('(max-width: 768px)').matches
-  );
+function detectIOS(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  if (/iPhone|iPod/.test(ua)) return true;
+  if (/iPad/.test(ua)) return true;
+  if (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) return true;
+  return false;
+}
 
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 768px)');
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
+const isIOS = detectIOS();
 
-  return isMobile;
+export default function useIsMobile(): boolean {
+  return isIOS;
 }
 ```
 
@@ -1947,15 +2006,20 @@ Audio blobs are excluded from JSON export (too large). Transcript text is includ
 
 ### Phase 2 — Enhanced
 
-| Feature | Details |
-|---|---|
-| **Deepgram Integration** | Add as alternative transcription provider |
-| **AssemblyAI WebSocket** | Real-time live preview during recording (without speaker labels) |
-| **Stakeholder Health** | Relationship health tracking, last contact date |
-| **Meeting Templates** | Reusable templates (standup, 1:1, sprint planning) |
-| **Advanced Search** | Web Worker with MiniSearch for faster full-text search at scale |
-| **Calendar Integration** | Google Calendar, Outlook — import meetings |
-| **Analytics Dashboard** | Meeting frequency, action item completion rates |
+| Feature | Status | Details |
+|---|---|---|
+| **Meeting Templates** | ✅ Done | Reusable templates with default tags, stakeholders, notes, linked prompt template |
+| **Prompt Templates** | ✅ Done | 4 built-in (General, Standup, 1:1, Strategy) + custom. Selectable per analysis |
+| **Error Logging** | ✅ Done | Persistent ErrorLog table + Error Boundary for graceful crash recovery |
+| **Keyboard Shortcuts** | ✅ Done | Navigation shortcuts + help modal + focus trap for accessibility |
+| **Code Splitting** | ✅ Done | Lazy-loaded route chunks (MeetingDetail, Settings, Stakeholders, Dashboard) |
+| **Offline Fallback** | ✅ Done | Custom offline.html page served by service worker when app shell unavailable |
+| **Deepgram Integration** | Planned | Add as alternative transcription provider |
+| **AssemblyAI WebSocket** | Planned | Real-time live preview during recording (without speaker labels) |
+| **Stakeholder Health** | Planned | Relationship health tracking, last contact date |
+| **Advanced Search** | Planned | Web Worker with MiniSearch for faster full-text search at scale |
+| **Calendar Integration** | Planned | Google Calendar, Outlook — import meetings |
+| **Analytics Dashboard** | Planned | Meeting frequency, action item completion rates |
 
 ### Phase 3 — Platform
 
@@ -1975,20 +2039,20 @@ Audio blobs are excluded from JSON export (too large). Transcript text is includ
 ```json
 {
   "dependencies": {
-    "react": "^18.3.0",
-    "react-dom": "^18.3.0",
-    "react-router-dom": "^6.23.0",
-    "@anthropic-ai/sdk": "^0.30.0",
-    "@tiptap/react": "^2.6.0",
-    "@tiptap/starter-kit": "^2.6.0",
-    "@tiptap/extension-placeholder": "^2.6.0",
-    "@tiptap/extension-highlight": "^2.6.0",
-    "@tiptap/extension-task-list": "^2.6.0",
-    "@tiptap/extension-task-item": "^2.6.0",
-    "dexie": "^4.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.13.0",
+    "@anthropic-ai/sdk": "^0.73.0",
+    "@tiptap/react": "^3.19.0",
+    "@tiptap/starter-kit": "^3.19.0",
+    "@tiptap/extension-placeholder": "^3.19.0",
+    "@tiptap/extension-highlight": "^3.19.0",
+    "@tiptap/extension-task-list": "^3.19.0",
+    "@tiptap/extension-task-item": "^3.19.0",
+    "dexie": "^4.3.0",
     "dexie-react-hooks": "^1.1.0",
-    "tailwindcss": "^3.4.0",
-    "lucide-react": "^0.400.0"
+    "tailwindcss": "^4.1.0",
+    "lucide-react": "^0.563.0"
   }
 }
 ```
@@ -2000,25 +2064,25 @@ No Zustand. No AssemblyAI SDK (raw fetch calls). No PDF library. No sync SDK.
 ```json
 {
   "devDependencies": {
-    "typescript": "^5.5.0",
-    "vite": "^5.4.0",
-    "@vitejs/plugin-react": "^4.3.0",
-    "vite-plugin-pwa": "^0.20.0",
-    "postcss": "^8.4.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.3.0",
+    "@vitejs/plugin-react": "^4.5.0",
+    "vite-plugin-pwa": "^1.2.0",
+    "@tailwindcss/postcss": "^4.1.0",
     "autoprefixer": "^10.4.0",
-    "@types/react": "^18.3.0",
-    "@types/react-dom": "^18.3.0",
-    "vitest": "^2.0.0",
-    "@testing-library/react": "^16.0.0",
-    "@testing-library/jest-dom": "^6.4.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "vitest": "^4.0.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/user-event": "^14.5.0",
-    "fake-indexeddb": "^6.0.0",
-    "jsdom": "^24.1.0",
+    "fake-indexeddb": "^6.2.0",
+    "happy-dom": "^18.0.0",
     "eslint": "^9.0.0",
     "@eslint/js": "^9.0.0",
     "typescript-eslint": "^8.0.0",
-    "eslint-plugin-react-hooks": "^4.6.0",
-    "prettier": "^3.3.0"
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "globals": "^16.0.0"
   }
 }
 ```

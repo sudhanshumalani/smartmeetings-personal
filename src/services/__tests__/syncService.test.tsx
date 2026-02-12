@@ -7,8 +7,6 @@ import type { SyncQueueItem } from '../../db/database';
 import { initialize as initSettings } from '../../services/settingsService';
 import * as settingsService from '../../services/settingsService';
 import { syncService } from '../syncService';
-import { googleDriveService } from '../googleDriveService';
-import * as exportService from '../exportService';
 import { meetingRepository } from '../meetingRepository';
 import { ThemeProvider } from '../../contexts/ThemeContext';
 import { ToastProvider } from '../../contexts/ToastContext';
@@ -68,40 +66,41 @@ describe('SyncService', () => {
   // --- pushChanges ---
 
   describe('pushChanges', () => {
-    it('throws when Google Drive not configured (no client ID)', async () => {
+    it('throws when cloud sync not configured', async () => {
       await expect(syncService.pushChanges()).rejects.toThrow(
-        'Google Drive not configured',
+        'Cloud sync not configured',
       );
     });
 
-    it('exports data and uploads to Google Drive', async () => {
-      await settingsService.saveGoogleClientId('test-client-id.apps.googleusercontent.com');
+    it('pushes pending items to Cloudflare Worker', async () => {
+      await settingsService.saveCloudBackupUrl('https://worker.example.com');
+      await settingsService.saveCloudBackupToken('test-bearer-token');
 
       // Add 3 pending items
       await addSyncItem();
       await addSyncItem();
       await addSyncItem();
 
-      const mockExportData = {
-        exportedAt: new Date().toISOString(),
-        version: '1.0',
-        meetings: [],
-        stakeholders: [],
-        stakeholderCategories: [],
-        transcripts: [],
-        meetingAnalyses: [],
-      };
-
-      vi.spyOn(googleDriveService, 'isSignedIn').mockReturnValue(true);
-      vi.spyOn(exportService, 'exportAllData').mockResolvedValue(mockExportData);
-      const uploadSpy = vi.spyOn(googleDriveService, 'uploadBackup').mockResolvedValue();
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      );
 
       const result = await syncService.pushChanges();
 
       expect(result.synced).toBe(3);
       expect(result.failed).toBe(0);
-      expect(uploadSpy).toHaveBeenCalledTimes(1);
-      expect(uploadSpy).toHaveBeenCalledWith(mockExportData);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+      // Verify correct endpoint and auth header
+      const [url, options] = fetchSpy.mock.calls[0];
+      expect(url).toBe('https://worker.example.com/push');
+      expect((options as RequestInit).method).toBe('POST');
+      expect((options as RequestInit).headers).toEqual(
+        expect.objectContaining({
+          'Authorization': 'Bearer test-bearer-token',
+          'Content-Type': 'application/json',
+        }),
+      );
 
       // All items should be marked as synced
       const items = await db.syncQueue.toArray();
@@ -110,23 +109,16 @@ describe('SyncService', () => {
       }
     });
 
-    it('marks syncQueue items as synced after successful upload', async () => {
-      await settingsService.saveGoogleClientId('test-client-id');
+    it('marks syncQueue items as synced after successful push', async () => {
+      await settingsService.saveCloudBackupUrl('https://worker.example.com');
+      await settingsService.saveCloudBackupToken('test-token');
 
       await addSyncItem();
       await addSyncItem();
 
-      vi.spyOn(googleDriveService, 'isSignedIn').mockReturnValue(true);
-      vi.spyOn(exportService, 'exportAllData').mockResolvedValue({
-        exportedAt: new Date().toISOString(),
-        version: '1.0',
-        meetings: [],
-        stakeholders: [],
-        stakeholderCategories: [],
-        transcripts: [],
-        meetingAnalyses: [],
-      });
-      vi.spyOn(googleDriveService, 'uploadBackup').mockResolvedValue();
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      );
 
       await syncService.pushChanges();
 
@@ -137,43 +129,9 @@ describe('SyncService', () => {
       }
     });
 
-    it('initializes and requests token when not signed in', async () => {
-      await settingsService.saveGoogleClientId('test-client-id');
-
-      vi.spyOn(googleDriveService, 'isSignedIn').mockReturnValue(false);
-      const initSpy = vi.spyOn(googleDriveService, 'initialize').mockImplementation(() => {});
-      const tokenSpy = vi.spyOn(googleDriveService, 'requestAccessToken').mockResolvedValue('token');
-      vi.spyOn(exportService, 'exportAllData').mockResolvedValue({
-        exportedAt: new Date().toISOString(),
-        version: '1.0',
-        meetings: [],
-        stakeholders: [],
-        stakeholderCategories: [],
-        transcripts: [],
-        meetingAnalyses: [],
-      });
-      vi.spyOn(googleDriveService, 'uploadBackup').mockResolvedValue();
-
-      await syncService.pushChanges();
-
-      expect(initSpy).toHaveBeenCalledWith('test-client-id');
-      expect(tokenSpy).toHaveBeenCalled();
-    });
-
     it('returns 0/0 when no pending items', async () => {
-      await settingsService.saveGoogleClientId('test-client-id');
-
-      vi.spyOn(googleDriveService, 'isSignedIn').mockReturnValue(true);
-      vi.spyOn(exportService, 'exportAllData').mockResolvedValue({
-        exportedAt: new Date().toISOString(),
-        version: '1.0',
-        meetings: [],
-        stakeholders: [],
-        stakeholderCategories: [],
-        transcripts: [],
-        meetingAnalyses: [],
-      });
-      vi.spyOn(googleDriveService, 'uploadBackup').mockResolvedValue();
+      await settingsService.saveCloudBackupUrl('https://worker.example.com');
+      await settingsService.saveCloudBackupToken('test-token');
 
       const result = await syncService.pushChanges();
 
@@ -182,58 +140,69 @@ describe('SyncService', () => {
     });
 
     it('skips already-synced items in count', async () => {
-      await settingsService.saveGoogleClientId('test-client-id');
+      await settingsService.saveCloudBackupUrl('https://worker.example.com');
+      await settingsService.saveCloudBackupToken('test-token');
 
       // Add one synced, one pending
       await addSyncItem({ syncedAt: new Date() });
       await addSyncItem();
 
-      vi.spyOn(googleDriveService, 'isSignedIn').mockReturnValue(true);
-      vi.spyOn(exportService, 'exportAllData').mockResolvedValue({
-        exportedAt: new Date().toISOString(),
-        version: '1.0',
-        meetings: [],
-        stakeholders: [],
-        stakeholderCategories: [],
-        transcripts: [],
-        meetingAnalyses: [],
-      });
-      vi.spyOn(googleDriveService, 'uploadBackup').mockResolvedValue();
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      );
 
       const result = await syncService.pushChanges();
 
       // Only 1 pending item
       expect(result.synced).toBe(1);
     });
+
+    it('records errors when push fails', async () => {
+      await settingsService.saveCloudBackupUrl('https://worker.example.com');
+      await settingsService.saveCloudBackupToken('test-token');
+
+      await addSyncItem();
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response('Server error', { status: 500 }),
+      );
+
+      const result = await syncService.pushChanges();
+
+      expect(result.synced).toBe(0);
+      expect(result.failed).toBe(1);
+
+      const items = await db.syncQueue.toArray();
+      expect(items[0].error).toBeTruthy();
+    });
   });
 
   // --- pullData ---
 
   describe('pullData', () => {
-    it('throws when Google Drive not configured', async () => {
+    it('throws when cloud sync not configured', async () => {
       await expect(syncService.pullData()).rejects.toThrow(
-        'Google Drive not configured',
+        'Cloud sync not configured',
       );
     });
 
-    it('downloads and imports data from Google Drive', async () => {
-      await settingsService.saveGoogleClientId('test-client-id');
+    it('pulls and imports data from Cloudflare Worker', async () => {
+      await settingsService.saveCloudBackupUrl('https://worker.example.com');
+      await settingsService.saveCloudBackupToken('test-token');
 
       const mockData = {
-        exportedAt: new Date().toISOString(),
-        version: '1.0',
         meetings: [
           {
             id: 'meeting-1',
-            title: 'Restored Meeting',
-            date: new Date(),
+            title: 'Pulled Meeting',
+            date: new Date().toISOString(),
             participants: [],
             tags: [],
             stakeholderIds: [],
-            status: 'draft' as const,
+            status: 'draft',
             notes: '',
-            createdAt: new Date(),
-            updatedAt: new Date(),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
             deletedAt: null,
           },
         ],
@@ -243,25 +212,29 @@ describe('SyncService', () => {
         meetingAnalyses: [],
       };
 
-      vi.spyOn(googleDriveService, 'isSignedIn').mockReturnValue(true);
-      vi.spyOn(googleDriveService, 'downloadBackup').mockResolvedValue(mockData);
-      const importSpy = vi.spyOn(exportService, 'importData').mockResolvedValue({
-        imported: 1,
-        skipped: 0,
-      });
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify(mockData), { status: 200 }),
+      );
 
       const result = await syncService.pullData();
 
-      expect(importSpy).toHaveBeenCalledWith(mockData);
       expect(result.imported).toBe(1);
       expect(result.skipped).toBe(0);
     });
 
-    it('returns 0/0 when no backup found on Drive', async () => {
-      await settingsService.saveGoogleClientId('test-client-id');
+    it('returns 0/0 when no data on cloud', async () => {
+      await settingsService.saveCloudBackupUrl('https://worker.example.com');
+      await settingsService.saveCloudBackupToken('test-token');
 
-      vi.spyOn(googleDriveService, 'isSignedIn').mockReturnValue(true);
-      vi.spyOn(googleDriveService, 'downloadBackup').mockResolvedValue(null);
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({
+          meetings: [],
+          stakeholders: [],
+          stakeholderCategories: [],
+          transcripts: [],
+          meetingAnalyses: [],
+        }), { status: 200 }),
+      );
 
       const result = await syncService.pullData();
 
@@ -400,20 +373,13 @@ describe('SyncService', () => {
     });
 
     it('triggers sync on click and shows success toast', async () => {
-      await settingsService.saveGoogleClientId('test-client-id');
+      await settingsService.saveCloudBackupUrl('https://worker.example.com');
+      await settingsService.saveCloudBackupToken('test-token');
       await addSyncItem();
 
-      vi.spyOn(googleDriveService, 'isSignedIn').mockReturnValue(true);
-      vi.spyOn(exportService, 'exportAllData').mockResolvedValue({
-        exportedAt: new Date().toISOString(),
-        version: '1.0',
-        meetings: [],
-        stakeholders: [],
-        stakeholderCategories: [],
-        transcripts: [],
-        meetingAnalyses: [],
-      });
-      vi.spyOn(googleDriveService, 'uploadBackup').mockResolvedValue();
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      );
 
       renderLayout();
 
@@ -425,10 +391,10 @@ describe('SyncService', () => {
       });
     });
 
-    it('shows error toast when sync fails (not configured)', async () => {
+    it('shows warning toast when sync not configured', async () => {
       await addSyncItem();
 
-      // No Google Client ID configured → throws
+      // No cloud backup URL/token configured → throws
       renderLayout();
 
       const btn = await screen.findByRole('button', { name: /sync/i });
@@ -436,7 +402,7 @@ describe('SyncService', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText(/Sign in to Google Drive in Settings/),
+          screen.getByText(/Set up Cloud Sync in Settings/),
         ).toBeInTheDocument();
       });
     });
