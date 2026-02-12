@@ -1,24 +1,124 @@
 import { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ListTodo, ClipboardCopy, Send, Loader2 } from 'lucide-react';
+import { ListTodo, ClipboardCopy, Send, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 import { taskRepository } from '../../../services/taskRepository';
 import { useToast } from '../../../contexts/ToastContext';
 import { pushConfirmedTasks } from '../../../services/taskFlowService';
 import EmptyState from '../../../shared/components/EmptyState';
 import TaskCard from '../components/TaskCard';
+import type { Task } from '../../../db/database';
 
 type TabFilter = 'all' | 'task' | 'followup';
-type SortOption = 'deadline' | 'priority' | 'date';
+type GroupByOption = 'stakeholder' | 'deadline' | 'priority';
 type PriorityFilter = 'all' | 'high' | 'medium' | 'low';
 
-const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
+const PRIORITY_LABELS: Record<string, string> = { high: 'High Priority', medium: 'Medium Priority', low: 'Low Priority' };
+
+function getStartOfWeek(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  d.setDate(diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function getDeadlineSectionLabel(deadline: string): string {
+  if (!deadline || deadline === 'TBD') return 'No Due Date';
+
+  const date = new Date(deadline);
+  if (isNaN(date.getTime())) return 'No Due Date';
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  if (date < today) return 'Overdue';
+
+  const startOfThisWeek = getStartOfWeek(now);
+  const endOfThisWeek = new Date(startOfThisWeek);
+  endOfThisWeek.setDate(endOfThisWeek.getDate() + 6);
+  endOfThisWeek.setHours(23, 59, 59, 999);
+
+  const startOfNextWeek = new Date(endOfThisWeek);
+  startOfNextWeek.setDate(startOfNextWeek.getDate() + 1);
+  startOfNextWeek.setHours(0, 0, 0, 0);
+  const endOfNextWeek = new Date(startOfNextWeek);
+  endOfNextWeek.setDate(endOfNextWeek.getDate() + 6);
+  endOfNextWeek.setHours(23, 59, 59, 999);
+
+  if (date >= today && date <= endOfThisWeek) return 'This Week';
+  if (date >= startOfNextWeek && date <= endOfNextWeek) return 'Next Week';
+
+  return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function groupTasksByDeadline(tasks: Task[]): [string, Task[]][] {
+  const groups = new Map<string, Task[]>();
+  const order = ['Overdue', 'This Week', 'Next Week'];
+
+  for (const task of tasks) {
+    const label = getDeadlineSectionLabel(task.deadline);
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label)!.push(task);
+  }
+
+  // Sort: Overdue first, then This Week, Next Week, then chronological months, No Due Date last
+  const entries = [...groups.entries()];
+  entries.sort(([a], [b]) => {
+    if (a === 'No Due Date') return 1;
+    if (b === 'No Due Date') return -1;
+    const ia = order.indexOf(a);
+    const ib = order.indexOf(b);
+    if (ia !== -1 && ib !== -1) return ia - ib;
+    if (ia !== -1) return -1;
+    if (ib !== -1) return 1;
+    return a.localeCompare(b);
+  });
+
+  return entries;
+}
+
+function groupTasksByStakeholder(tasks: Task[]): [string, Task[]][] {
+  const groups = new Map<string, Task[]>();
+
+  for (const task of tasks) {
+    const label = task.owner && task.owner !== 'TBD' ? task.owner : 'Unassigned';
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label)!.push(task);
+  }
+
+  // Sort alphabetically, Unassigned at the end
+  const entries = [...groups.entries()];
+  entries.sort(([a], [b]) => {
+    if (a === 'Unassigned') return 1;
+    if (b === 'Unassigned') return -1;
+    return a.localeCompare(b);
+  });
+
+  return entries;
+}
+
+function groupTasksByPriority(tasks: Task[]): [string, Task[]][] {
+  const groups = new Map<string, Task[]>();
+
+  for (const task of tasks) {
+    const label = PRIORITY_LABELS[task.priority] || 'Medium Priority';
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label)!.push(task);
+  }
+
+  // Fixed order: High, Medium, Low
+  const order = ['High Priority', 'Medium Priority', 'Low Priority'];
+  return order.filter(label => groups.has(label)).map(label => [label, groups.get(label)!]);
+}
 
 export default function TasksPage() {
   const { addToast } = useToast();
   const [tab, setTab] = useState<TabFilter>('all');
-  const [sortBy, setSortBy] = useState<SortOption>('date');
+  const [groupBy, setGroupBy] = useState<GroupByOption>('stakeholder');
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
   const [pushing, setPushing] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
   const tasks = useLiveQuery(() => taskRepository.getAll());
 
@@ -34,26 +134,34 @@ export default function TasksPage() {
     return result;
   }, [tasks, tab, priorityFilter]);
 
+  // Sort tasks within groups: todo first, then by createdAt desc
   const sortedTasks = useMemo(() => {
     return [...filteredTasks].sort((a, b) => {
-      switch (sortBy) {
-        case 'priority':
-          return (PRIORITY_ORDER[a.priority] ?? 1) - (PRIORITY_ORDER[b.priority] ?? 1);
-        case 'deadline':
-          // Sort TBD/empty deadlines to end
-          if (!a.deadline || a.deadline === 'TBD') return 1;
-          if (!b.deadline || b.deadline === 'TBD') return -1;
-          return a.deadline.localeCompare(b.deadline);
-        case 'date':
-        default:
-          return b.createdAt.getTime() - a.createdAt.getTime();
-      }
+      return b.createdAt.getTime() - a.createdAt.getTime();
     });
-  }, [filteredTasks, sortBy]);
+  }, [filteredTasks]);
 
-  // Split into todo and done
-  const todoTasks = sortedTasks.filter(t => t.status === 'todo');
-  const doneTasks = sortedTasks.filter(t => t.status === 'done');
+  // Group tasks
+  const groupedTasks = useMemo(() => {
+    switch (groupBy) {
+      case 'deadline':
+        return groupTasksByDeadline(sortedTasks);
+      case 'priority':
+        return groupTasksByPriority(sortedTasks);
+      case 'stakeholder':
+      default:
+        return groupTasksByStakeholder(sortedTasks);
+    }
+  }, [sortedTasks, groupBy]);
+
+  function toggleSection(label: string) {
+    setCollapsedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  }
 
   async function handleToggleStatus(id: string) {
     await taskRepository.toggleStatus(id);
@@ -171,17 +279,17 @@ export default function TasksPage() {
         ))}
       </div>
 
-      {/* Sort & Filter controls */}
+      {/* Group & Filter controls */}
       <div className="mb-4 flex items-center gap-2">
         <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as SortOption)}
+          value={groupBy}
+          onChange={(e) => { setGroupBy(e.target.value as GroupByOption); setCollapsedSections(new Set()); }}
           className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
-          aria-label="Sort by"
+          aria-label="Group by"
         >
-          <option value="date">Sort: Date Added</option>
-          <option value="priority">Sort: Priority</option>
-          <option value="deadline">Sort: Deadline</option>
+          <option value="stakeholder">Group: By Owner</option>
+          <option value="deadline">Group: By Due Date</option>
+          <option value="priority">Group: By Priority</option>
         </select>
         <select
           value={priorityFilter}
@@ -216,44 +324,50 @@ export default function TasksPage() {
           description="Open a meeting's Analysis tab and triage action items to add them as tasks."
         />
       ) : (
-        <div className="space-y-6">
-          {/* Todo tasks */}
-          {todoTasks.length > 0 && (
-            <div>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                To Do ({todoTasks.length})
-              </h2>
-              <div className="space-y-2">
-                {todoTasks.map(task => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    onToggleStatus={handleToggleStatus}
-                    onDelete={handleDelete}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
+        <div className="space-y-5">
+          {groupedTasks.map(([label, sectionTasks]) => {
+            const todoInSection = sectionTasks.filter(t => t.status === 'todo');
+            const doneInSection = sectionTasks.filter(t => t.status === 'done');
+            const isCollapsed = collapsedSections.has(label);
 
-          {/* Done tasks */}
-          {doneTasks.length > 0 && (
-            <div>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                Done ({doneTasks.length})
-              </h2>
-              <div className="space-y-2">
-                {doneTasks.map(task => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    onToggleStatus={handleToggleStatus}
-                    onDelete={handleDelete}
-                  />
-                ))}
+            return (
+              <div key={label}>
+                <button
+                  onClick={() => toggleSection(label)}
+                  className="mb-2.5 flex items-center gap-1 text-sm font-semibold text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+                  {label}
+                  <span className="ml-1 text-xs font-normal text-gray-400">
+                    ({todoInSection.length} open{doneInSection.length > 0 ? `, ${doneInSection.length} done` : ''})
+                  </span>
+                </button>
+                {!isCollapsed && (
+                  <div className="space-y-2 pl-1">
+                    {todoInSection.map(task => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        onToggleStatus={handleToggleStatus}
+                        onDelete={handleDelete}
+                      />
+                    ))}
+                    {doneInSection.length > 0 && todoInSection.length > 0 && (
+                      <div className="my-2 border-t border-dashed border-gray-200 dark:border-gray-700" />
+                    )}
+                    {doneInSection.map(task => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        onToggleStatus={handleToggleStatus}
+                        onDelete={handleDelete}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            );
+          })}
         </div>
       )}
     </div>
