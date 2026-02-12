@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ListTodo, ClipboardCopy } from 'lucide-react';
+import { ListTodo, ClipboardCopy, Send, Loader2 } from 'lucide-react';
 import { taskRepository } from '../../../services/taskRepository';
 import { useToast } from '../../../contexts/ToastContext';
+import { pushConfirmedTasks } from '../../../services/taskFlowService';
 import EmptyState from '../../../shared/components/EmptyState';
 import TaskCard from '../components/TaskCard';
 
@@ -17,6 +18,7 @@ export default function TasksPage() {
   const [tab, setTab] = useState<TabFilter>('all');
   const [sortBy, setSortBy] = useState<SortOption>('date');
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
+  const [pushing, setPushing] = useState(false);
 
   const tasks = useLiveQuery(() => taskRepository.getAll());
 
@@ -94,6 +96,31 @@ export default function TasksPage() {
     addToast('Tasks copied to clipboard', 'success');
   }
 
+  async function handlePushToTaskFlow() {
+    if (!tasks || tasks.length === 0) {
+      addToast('No tasks to push', 'info');
+      return;
+    }
+    setPushing(true);
+    try {
+      const result = await pushConfirmedTasks();
+      if (result.failed > 0) {
+        addToast(`Pushed ${result.pushed} tasks, ${result.failed} failed`, 'error');
+      } else {
+        addToast(`${result.pushed} tasks pushed to TaskFlow`, 'success');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      if (message.includes('not configured')) {
+        addToast('Cloud sync not configured. Set URL and token in Settings.', 'warning');
+      } else {
+        addToast(`TaskFlow push failed: ${message}`, 'error');
+      }
+    } finally {
+      setPushing(false);
+    }
+  }
+
   const tabs: { key: TabFilter; label: string; count: number }[] = [
     { key: 'all', label: 'All', count: tasks?.length ?? 0 },
     { key: 'task', label: 'My Tasks', count: tasks?.filter(t => t.type === 'task').length ?? 0 },
@@ -107,13 +134,23 @@ export default function TasksPage() {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
           Tasks
         </h1>
-        <button
-          onClick={handleExport}
-          className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
-        >
-          <ClipboardCopy size={14} />
-          Export
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handlePushToTaskFlow}
+            disabled={pushing || !navigator.onLine}
+            className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {pushing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            {pushing ? 'Pushing...' : 'Push to TaskFlow'}
+          </button>
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
+          >
+            <ClipboardCopy size={14} />
+            Export
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}

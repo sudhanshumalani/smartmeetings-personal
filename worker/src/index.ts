@@ -1,6 +1,8 @@
 interface Env {
   DB: D1Database;
   SYNC_TOKEN: string;
+  SUPABASE_URL?: string;
+  SUPABASE_SERVICE_KEY?: string;
 }
 
 interface PushChange {
@@ -180,6 +182,86 @@ async function handleStatus(env: Env): Promise<Response> {
   });
 }
 
+interface TaskFlowTask {
+  id: string;
+  title: string;
+  description: string;
+  type: string;
+  priority: string;
+  status: string;
+  owner: string;
+  deadline: string;
+  followUpTarget: string;
+  sourceMeetingTitle: string;
+  sourceMeetingId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+async function handleTaskFlowPush(request: Request, env: Env): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+    return errorResponse('TaskFlow integration not configured. Set SUPABASE_URL and SUPABASE_SERVICE_KEY Worker secrets.', 500);
+  }
+
+  let body: { tasks: TaskFlowTask[] };
+  try {
+    body = await request.json() as { tasks: TaskFlowTask[] };
+  } catch {
+    return errorResponse('Invalid JSON body', 400);
+  }
+
+  if (!body.tasks || !Array.isArray(body.tasks) || body.tasks.length === 0) {
+    return errorResponse('Missing or empty "tasks" array', 400);
+  }
+
+  // Transform camelCase → snake_case for Supabase columns
+  const rows = body.tasks.map((t) => ({
+    id: t.id,
+    source: 'smartmeetings',
+    title: t.title,
+    description: t.description || null,
+    type: t.type,
+    priority: t.priority,
+    status: t.status,
+    owner: t.owner || null,
+    deadline: t.deadline || null,
+    follow_up_target: t.followUpTarget || null,
+    source_meeting_title: t.sourceMeetingTitle || null,
+    source_meeting_id: t.sourceMeetingId || null,
+    sm_created_at: t.createdAt,
+    sm_updated_at: t.updatedAt,
+  }));
+
+  try {
+    const supabaseResponse = await fetch(`${env.SUPABASE_URL}/rest/v1/taskflow_inbox`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': env.SUPABASE_SERVICE_KEY,
+        'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+        'Prefer': 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify(rows),
+    });
+
+    if (!supabaseResponse.ok) {
+      const errText = await supabaseResponse.text();
+      return jsonResponse(
+        { pushed: 0, failed: rows.length, errors: [{ taskId: null, error: `Supabase error (${supabaseResponse.status}): ${errText}` }] },
+        502,
+      );
+    }
+
+    return jsonResponse({ pushed: rows.length, failed: 0, errors: [] });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return jsonResponse(
+      { pushed: 0, failed: rows.length, errors: [{ taskId: null, error: message }] },
+      502,
+    );
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     // Handle CORS preflight
@@ -205,6 +287,10 @@ export default {
 
     if (request.method === 'GET' && path === '/status') {
       return handleStatus(env);
+    }
+
+    if (request.method === 'POST' && path === '/taskflow/push') {
+      return handleTaskFlowPush(request, env);
     }
 
     return errorResponse('Not found', 404);
