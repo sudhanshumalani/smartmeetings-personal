@@ -8,6 +8,9 @@ import {
   HelpCircle,
   ShieldAlert,
   ListPlus,
+  Plus,
+  User,
+  Bell,
 } from 'lucide-react';
 import type { MeetingAnalysis } from '../../../db/database';
 import { taskRepository } from '../../../services/taskRepository';
@@ -43,6 +46,15 @@ const TYPE_CONFIG: Record<string, { icon: typeof AlertTriangle; style: string }>
 
 export default function AnalysisPanel({ analysis, meetingId, meetingTitle }: AnalysisPanelProps) {
   const { addToast } = useToast();
+  const [showManualForm, setShowManualForm] = useState(false);
+  const [manualTitle, setManualTitle] = useState('');
+  const [manualType, setManualType] = useState<'task' | 'followup'>('task');
+  const [manualOwner, setManualOwner] = useState('');
+  const [manualDeadline, setManualDeadline] = useState('');
+  const [manualPriority, setManualPriority] = useState<'high' | 'medium' | 'low'>('medium');
+  const [manualFollowUpTarget, setManualFollowUpTarget] = useState('');
+  const [manualDescription, setManualDescription] = useState('');
+
   const addedIndices = useLiveQuery(
     () => taskRepository.getAddedActionItemIndices(analysis.id),
     [analysis.id],
@@ -93,6 +105,36 @@ export default function AnalysisPanel({ analysis, meetingId, meetingTitle }: Ana
     }
     await taskRepository.createMany(inputs);
     addToast(`Added ${inputs.length} task${inputs.length !== 1 ? 's' : ''}`, 'success');
+  }
+
+  function resetManualForm() {
+    setManualTitle('');
+    setManualType('task');
+    setManualOwner('');
+    setManualDeadline('');
+    setManualPriority('medium');
+    setManualFollowUpTarget('');
+    setManualDescription('');
+    setShowManualForm(false);
+  }
+
+  async function handleManualTaskSubmit() {
+    if (!manualTitle.trim()) return;
+    await taskRepository.create({
+      meetingId: meetingId || analysis.meetingId,
+      analysisId: analysis.id,
+      type: manualType,
+      title: manualTitle.trim(),
+      description: manualDescription.trim(),
+      owner: manualOwner.trim(),
+      deadline: manualDeadline.trim() || 'TBD',
+      priority: manualPriority,
+      followUpTarget: manualType === 'followup' ? manualFollowUpTarget.trim() : '',
+      sourceMeetingTitle: meetingTitle || '',
+      sourceActionItemIndex: -1,
+    });
+    addToast(`Added "${manualTitle.trim()}" as ${manualType === 'task' ? 'My Task' : 'Follow-up'}`, 'success');
+    resetManualForm();
   }
 
   return (
@@ -205,6 +247,146 @@ export default function AnalysisPanel({ analysis, meetingId, meetingTitle }: Ana
               )
             ))}
           </div>
+        </section>
+      )}
+
+      {/* Add Manual Task */}
+      {meetingId && (
+        <section>
+          {!showManualForm ? (
+            <button
+              onClick={() => setShowManualForm(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm font-medium text-gray-500 transition-colors hover:border-brand-400 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-brand-500 dark:hover:text-brand-400"
+            >
+              <Plus size={14} />
+              Add task the AI missed...
+            </button>
+          ) : (
+            <div className="rounded-lg border border-brand-200 bg-brand-50/50 p-4 dark:border-brand-800 dark:bg-brand-900/20">
+              <h4 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                Add Manual Task
+              </h4>
+              <div className="space-y-3">
+                {/* Type toggle */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setManualType('task')}
+                    className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                      manualType === 'task'
+                        ? 'bg-brand-600 text-white'
+                        : 'bg-white text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                    }`}
+                  >
+                    <User size={12} />
+                    My Task
+                  </button>
+                  <button
+                    onClick={() => setManualType('followup')}
+                    className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                      manualType === 'followup'
+                        ? 'bg-amber-600 text-white'
+                        : 'bg-white text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                    }`}
+                  >
+                    <Bell size={12} />
+                    Follow-up
+                  </button>
+                </div>
+
+                {/* Title */}
+                <div>
+                  <label className="mb-0.5 block text-xs font-medium text-gray-600 dark:text-gray-400">Title *</label>
+                  <input
+                    type="text"
+                    value={manualTitle}
+                    onChange={(e) => setManualTitle(e.target.value)}
+                    placeholder="What needs to be done?"
+                    className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm text-gray-700 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className="mb-0.5 block text-xs font-medium text-gray-600 dark:text-gray-400">Description</label>
+                  <input
+                    type="text"
+                    value={manualDescription}
+                    onChange={(e) => setManualDescription(e.target.value)}
+                    placeholder="Additional context (optional)"
+                    className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm text-gray-700 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300"
+                  />
+                </div>
+
+                {/* Follow-up target (only for follow-up type) */}
+                {manualType === 'followup' && (
+                  <div>
+                    <label className="mb-0.5 block text-xs font-medium text-gray-600 dark:text-gray-400">Follow up with</label>
+                    <input
+                      type="text"
+                      value={manualFollowUpTarget}
+                      onChange={(e) => setManualFollowUpTarget(e.target.value)}
+                      placeholder="Person to follow up with"
+                      className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm text-gray-700 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300"
+                    />
+                  </div>
+                )}
+
+                {/* Owner, Deadline, Priority row */}
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="mb-0.5 block text-xs font-medium text-gray-600 dark:text-gray-400">Owner</label>
+                    <input
+                      type="text"
+                      value={manualOwner}
+                      onChange={(e) => setManualOwner(e.target.value)}
+                      placeholder="Who"
+                      className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm text-gray-700 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="mb-0.5 block text-xs font-medium text-gray-600 dark:text-gray-400">Deadline</label>
+                    <input
+                      type="text"
+                      value={manualDeadline}
+                      onChange={(e) => setManualDeadline(e.target.value)}
+                      placeholder="When"
+                      className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm text-gray-700 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300"
+                    />
+                  </div>
+                  <div className="w-28">
+                    <label className="mb-0.5 block text-xs font-medium text-gray-600 dark:text-gray-400">Priority</label>
+                    <select
+                      value={manualPriority}
+                      onChange={(e) => setManualPriority(e.target.value as 'high' | 'medium' | 'low')}
+                      className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                    >
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Submit / Cancel */}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={handleManualTaskSubmit}
+                    disabled={!manualTitle.trim()}
+                    className="rounded-lg bg-brand-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                  >
+                    Add Task
+                  </button>
+                  <button
+                    onClick={resetManualForm}
+                    className="rounded-lg border border-gray-200 px-4 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
       )}
 
