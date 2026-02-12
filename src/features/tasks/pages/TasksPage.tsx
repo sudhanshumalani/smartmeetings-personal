@@ -1,12 +1,13 @@
 import { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ListTodo, ClipboardCopy, Send, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import { db } from '../../../db/database';
+import type { Task } from '../../../db/database';
 import { taskRepository } from '../../../services/taskRepository';
 import { useToast } from '../../../contexts/ToastContext';
 import { pushConfirmedTasks } from '../../../services/taskFlowService';
 import EmptyState from '../../../shared/components/EmptyState';
 import TaskCard from '../components/TaskCard';
-import type { Task } from '../../../db/database';
 
 type TabFilter = 'all' | 'task' | 'followup';
 type GroupByOption = 'stakeholder' | 'deadline' | 'priority';
@@ -78,20 +79,31 @@ function groupTasksByDeadline(tasks: Task[]): [string, Task[]][] {
   return entries;
 }
 
-function groupTasksByStakeholder(tasks: Task[]): [string, Task[]][] {
+function groupTasksByStakeholder(
+  tasks: Task[],
+  meetingStakeholderMap: Map<string, string[]>,
+): [string, Task[]][] {
   const groups = new Map<string, Task[]>();
 
   for (const task of tasks) {
-    const label = task.owner && task.owner !== 'TBD' ? task.owner : 'Unassigned';
-    if (!groups.has(label)) groups.set(label, []);
-    groups.get(label)!.push(task);
+    const names = meetingStakeholderMap.get(task.meetingId);
+    if (names && names.length > 0) {
+      // Group under each stakeholder the meeting is tagged with
+      for (const name of names) {
+        if (!groups.has(name)) groups.set(name, []);
+        groups.get(name)!.push(task);
+      }
+    } else {
+      if (!groups.has('No Stakeholder')) groups.set('No Stakeholder', []);
+      groups.get('No Stakeholder')!.push(task);
+    }
   }
 
-  // Sort alphabetically, Unassigned at the end
+  // Sort alphabetically, No Stakeholder at the end
   const entries = [...groups.entries()];
   entries.sort(([a], [b]) => {
-    if (a === 'Unassigned') return 1;
-    if (b === 'Unassigned') return -1;
+    if (a === 'No Stakeholder') return 1;
+    if (b === 'No Stakeholder') return -1;
     return a.localeCompare(b);
   });
 
@@ -122,6 +134,28 @@ export default function TasksPage() {
 
   const tasks = useLiveQuery(() => taskRepository.getAll());
 
+  // Load meetings and stakeholders for stakeholder grouping
+  const meetings = useLiveQuery(() =>
+    db.meetings.filter(m => m.deletedAt === null).toArray(),
+  );
+  const stakeholders = useLiveQuery(() =>
+    db.stakeholders.filter(s => s.deletedAt === null).toArray(),
+  );
+
+  // Build meetingId → stakeholder names lookup
+  const meetingStakeholderMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    if (!meetings || !stakeholders) return map;
+    const sMap = new Map(stakeholders.map(s => [s.id, s.name]));
+    for (const m of meetings) {
+      const names = m.stakeholderIds
+        .map(sid => sMap.get(sid))
+        .filter((n): n is string => !!n);
+      map.set(m.id, names);
+    }
+    return map;
+  }, [meetings, stakeholders]);
+
   const filteredTasks = useMemo(() => {
     if (!tasks) return [];
     let result = tasks;
@@ -150,9 +184,9 @@ export default function TasksPage() {
         return groupTasksByPriority(sortedTasks);
       case 'stakeholder':
       default:
-        return groupTasksByStakeholder(sortedTasks);
+        return groupTasksByStakeholder(sortedTasks, meetingStakeholderMap);
     }
-  }, [sortedTasks, groupBy]);
+  }, [sortedTasks, groupBy, meetingStakeholderMap]);
 
   function toggleSection(label: string) {
     setCollapsedSections(prev => {
@@ -287,7 +321,7 @@ export default function TasksPage() {
           className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
           aria-label="Group by"
         >
-          <option value="stakeholder">Group: By Owner</option>
+          <option value="stakeholder">Group: By Stakeholder</option>
           <option value="deadline">Group: By Due Date</option>
           <option value="priority">Group: By Priority</option>
         </select>
