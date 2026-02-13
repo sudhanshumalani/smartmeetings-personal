@@ -22,21 +22,55 @@ export async function pushConfirmedTasks(): Promise<TaskFlowPushResult> {
     return { pushed: 0, failed: 0, errors: [] };
   }
 
-  const payload = tasks.map((t) => ({
-    id: t.id,
-    title: t.title,
-    description: t.description,
-    type: t.type,
-    priority: t.priority,
-    status: t.status,
-    owner: t.owner,
-    deadline: t.deadline,
-    followUpTarget: t.followUpTarget,
-    sourceMeetingTitle: t.sourceMeetingTitle,
-    sourceMeetingId: t.meetingId,
-    createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : String(t.createdAt),
-    updatedAt: t.updatedAt instanceof Date ? t.updatedAt.toISOString() : String(t.updatedAt),
-  }));
+  // Collect unique meeting IDs and batch-fetch meetings, stakeholders, categories
+  const meetingIds = [...new Set(tasks.map((t) => t.meetingId))];
+  const meetings = await db.meetings.where('id').anyOf(meetingIds).toArray();
+  const meetingMap = new Map(meetings.map((m) => [m.id, m]));
+
+  const allStakeholderIds = [...new Set(meetings.flatMap((m) => m.stakeholderIds ?? []))];
+  const stakeholders = allStakeholderIds.length > 0
+    ? await db.stakeholders.where('id').anyOf(allStakeholderIds).toArray()
+    : [];
+  const stakeholderMap = new Map(stakeholders.map((s) => [s.id, s]));
+
+  const allCategoryIds = [...new Set(stakeholders.flatMap((s) => s.categoryIds ?? []))];
+  const categories = allCategoryIds.length > 0
+    ? await db.stakeholderCategories.where('id').anyOf(allCategoryIds).toArray()
+    : [];
+  const categoryMap = new Map(categories.map((c) => [c.id, c]));
+
+  const payload = tasks.map((t) => {
+    const meeting = meetingMap.get(t.meetingId);
+    const meetingStakeholders = (meeting?.stakeholderIds ?? [])
+      .map((sid) => stakeholderMap.get(sid))
+      .filter(Boolean);
+    const stakeholderNames = meetingStakeholders.map((s) => s!.name);
+    const stakeholderCategories = [
+      ...new Set(
+        meetingStakeholders.flatMap((s) =>
+          (s!.categoryIds ?? []).map((cid) => categoryMap.get(cid)?.name).filter(Boolean)
+        )
+      ),
+    ] as string[];
+
+    return {
+      id: t.id,
+      title: t.title,
+      description: t.description,
+      type: t.type,
+      priority: t.priority,
+      status: t.status,
+      owner: t.owner,
+      deadline: t.deadline,
+      followUpTarget: t.followUpTarget,
+      sourceMeetingTitle: t.sourceMeetingTitle,
+      sourceMeetingId: t.meetingId,
+      stakeholderNames,
+      stakeholderCategories,
+      createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : String(t.createdAt),
+      updatedAt: t.updatedAt instanceof Date ? t.updatedAt.toISOString() : String(t.updatedAt),
+    };
+  });
 
   const response = await fetch(`${baseUrl}/taskflow/push`, {
     method: 'POST',

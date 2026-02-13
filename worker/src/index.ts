@@ -194,6 +194,8 @@ interface TaskFlowTask {
   followUpTarget: string;
   sourceMeetingTitle: string;
   sourceMeetingId: string;
+  stakeholderNames: string[];
+  stakeholderCategories: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -228,6 +230,8 @@ async function handleTaskFlowPush(request: Request, env: Env): Promise<Response>
     follow_up_target: t.followUpTarget || null,
     source_meeting_title: t.sourceMeetingTitle || null,
     source_meeting_id: t.sourceMeetingId || null,
+    sm_stakeholder_name: t.stakeholderNames ?? [],
+    sm_stakeholder_category: t.stakeholderCategories ?? [],
     sm_created_at: t.createdAt,
     sm_updated_at: t.updatedAt,
   }));

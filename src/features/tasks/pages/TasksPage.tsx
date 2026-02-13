@@ -253,8 +253,10 @@ export default function TasksPage() {
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      if (message.includes('not configured')) {
+      if (message.includes('Cloud sync not configured')) {
         addToast('Cloud sync not configured. Set URL and token in Settings.', 'warning');
+      } else if (message.includes('SUPABASE_URL') || message.includes('SUPABASE_SERVICE_KEY')) {
+        addToast('TaskFlow integration not configured on Worker. Set SUPABASE_URL and SUPABASE_SERVICE_KEY secrets.', 'error');
       } else {
         addToast(`TaskFlow push failed: ${message}`, 'error');
       }
