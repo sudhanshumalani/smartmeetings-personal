@@ -438,34 +438,39 @@ export default {
       return new Response(null, { status: 204, headers: corsHeaders() });
     }
 
-    // Authenticate all non-OPTIONS requests
-    if (!authenticate(request, env)) {
-      return errorResponse('Unauthorized', 401);
+    try {
+      // Authenticate all non-OPTIONS requests
+      if (!authenticate(request, env)) {
+        return errorResponse('Unauthorized', 401);
+      }
+
+      const url = new URL(request.url);
+      const path = url.pathname;
+
+      if (request.method === 'POST' && path === '/push') {
+        return handlePush(request, env);
+      }
+
+      if (request.method === 'GET' && path === '/pull') {
+        return handlePull(request, env);
+      }
+
+      if (request.method === 'GET' && path === '/status') {
+        return handleStatus(env);
+      }
+
+      if (request.method === 'POST' && path === '/taskflow/push') {
+        return handleTaskFlowPush(request, env);
+      }
+
+      if (request.method === 'POST' && path === '/taskflow/sync-stakeholders') {
+        return handleSyncStakeholders(request, env);
+      }
+
+      return errorResponse('Not found', 404);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Internal server error';
+      return errorResponse(message, 500);
     }
-
-    const url = new URL(request.url);
-    const path = url.pathname;
-
-    if (request.method === 'POST' && path === '/push') {
-      return handlePush(request, env);
-    }
-
-    if (request.method === 'GET' && path === '/pull') {
-      return handlePull(request, env);
-    }
-
-    if (request.method === 'GET' && path === '/status') {
-      return handleStatus(env);
-    }
-
-    if (request.method === 'POST' && path === '/taskflow/push') {
-      return handleTaskFlowPush(request, env);
-    }
-
-    if (request.method === 'POST' && path === '/taskflow/sync-stakeholders') {
-      return handleSyncStakeholders(request, env);
-    }
-
-    return errorResponse('Not found', 404);
   },
 };
