@@ -292,141 +292,89 @@ async function handleSyncStakeholders(request: Request, env: Env): Promise<Respo
     return errorResponse('Missing "categories" array', 400);
   }
 
-  const headers = {
+  const supaHeaders = {
     'Content-Type': 'application/json',
     'apikey': env.SUPABASE_SERVICE_KEY,
     'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}`,
-    'Prefer': 'resolution=merge-duplicates',
   };
 
   const errors: string[] = [];
 
-  // 1. Upsert categories into sm_category_mappings (preserves user's workstream_id)
+  // 1. Upsert categories into sm_category_mappings (non-fatal if table doesn't exist yet)
   if (body.categories.length > 0) {
-    const categoryRows = body.categories.map((c) => ({
-      id: c.id,
-      name: c.name,
-      updated_at: new Date().toISOString(),
-    }));
+    try {
+      const categoryRows = body.categories.map((c) => ({
+        id: c.id,
+        name: c.name,
+        updated_at: new Date().toISOString(),
+      }));
 
-    const catResponse = await fetch(`${env.SUPABASE_URL}/rest/v1/sm_category_mappings`, {
-      method: 'POST',
-      headers: { ...headers, 'Prefer': 'resolution=merge-duplicates' },
-      body: JSON.stringify(categoryRows),
-    });
+      const catResponse = await fetch(`${env.SUPABASE_URL}/rest/v1/sm_category_mappings`, {
+        method: 'POST',
+        headers: { ...supaHeaders, 'Prefer': 'resolution=merge-duplicates' },
+        body: JSON.stringify(categoryRows),
+      });
 
-    if (!catResponse.ok) {
-      const errText = await catResponse.text();
-      errors.push(`Category upsert failed (${catResponse.status}): ${errText}`);
+      if (!catResponse.ok) {
+        errors.push(`Category sync skipped (${catResponse.status}): table may not exist yet — run migration 009`);
+      }
+    } catch {
+      errors.push('Category sync skipped: network error');
     }
   }
 
-  // 2. Sync stakeholders into projects table (match by sm_stakeholder_id, not slug)
-  let projectsUpdated = 0;
-  let projectsCreated = 0;
+  // 2. Sync stakeholders into projects — fetch existing, then ONE bulk upsert for updates
+  //    Uses only 2 subrequests total (fetch + upsert) to stay within Cloudflare limits
+  let projectsSynced = 0;
   if (body.stakeholders.length > 0) {
-    // Fetch all existing projects that have sm_stakeholder_id set
-    const existingResp = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/projects?sm_stakeholder_id=not.is.null&select=id,sm_stakeholder_id`,
-      { headers: { 'apikey': env.SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}` } },
-    );
-    const existingProjects = existingResp.ok
-      ? await existingResp.json() as { id: string; sm_stakeholder_id: string }[]
-      : [];
-    const existingBySmId = new Map(existingProjects.map((p) => [p.sm_stakeholder_id, p.id]));
+    try {
+      // Fetch all existing projects that have sm_stakeholder_id
+      const existingResp = await fetch(
+        `${env.SUPABASE_URL}/rest/v1/projects?sm_stakeholder_id=not.is.null&select=id,sm_stakeholder_id,name`,
+        { headers: supaHeaders },
+      );
+      const existingProjects = existingResp.ok
+        ? await existingResp.json() as { id: string; sm_stakeholder_id: string; name: string }[]
+        : [];
+      const existingBySmId = new Map(existingProjects.map((p) => [p.sm_stakeholder_id, p]));
 
-    for (const s of body.stakeholders) {
-      const smCategoryId = s.categoryIds?.length > 0 ? s.categoryIds[0] : null;
-      const existingProjectId = existingBySmId.get(s.id);
+      // Build rows for bulk upsert via primary key (id)
+      const upsertRows = body.stakeholders.map((s) => {
+        const existing = existingBySmId.get(s.id);
+        // Use existing project ID if found, otherwise generate slug
+        const id = existing
+          ? existing.id
+          : s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-      if (existingProjectId) {
-        // Update existing project: refresh name and category
-        const patchResp = await fetch(
-          `${env.SUPABASE_URL}/rest/v1/projects?id=eq.${encodeURIComponent(existingProjectId)}`,
-          {
-            method: 'PATCH',
-            headers,
-            body: JSON.stringify({
-              name: s.name,
-              sm_stakeholder_name: s.name,
-              sm_category_id: smCategoryId,
-            }),
-          },
-        );
-        if (patchResp.ok) projectsUpdated++;
-        else errors.push(`Project update failed for ${s.name}: ${await patchResp.text()}`);
+        return {
+          id,
+          name: s.name,
+          sm_stakeholder_name: s.name,
+          sm_stakeholder_id: s.id,
+        };
+      });
+
+      const upsertResp = await fetch(`${env.SUPABASE_URL}/rest/v1/projects`, {
+        method: 'POST',
+        headers: { ...supaHeaders, 'Prefer': 'resolution=merge-duplicates,return=representation' },
+        body: JSON.stringify(upsertRows),
+      });
+
+      if (upsertResp.ok) {
+        const result = await upsertResp.json() as unknown[];
+        projectsSynced = result.length;
       } else {
-        // Create new project with slug ID
-        const slug = s.name
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-|-$/g, '');
-
-        const postResp = await fetch(`${env.SUPABASE_URL}/rest/v1/projects`, {
-          method: 'POST',
-          headers: { ...headers, 'Prefer': 'return=minimal' },
-          body: JSON.stringify({
-            id: slug,
-            name: s.name,
-            sm_stakeholder_name: s.name,
-            sm_stakeholder_id: s.id,
-            sm_category_id: smCategoryId,
-          }),
-        });
-        if (postResp.ok) projectsCreated++;
-        else {
-          const errText = await postResp.text();
-          // Ignore duplicate key errors (project already exists with this slug)
-          if (!errText.includes('duplicate key')) {
-            errors.push(`Project create failed for ${s.name}: ${errText}`);
-          }
-        }
+        const errText = await upsertResp.text();
+        errors.push(`Project sync failed (${upsertResp.status}): ${errText}`);
       }
+    } catch {
+      errors.push('Project sync failed: network error');
     }
-  }
-
-  // 3. Auto-set workstream_id on projects that have sm_category_id mapped but no workstream yet
-  //    This uses a Supabase RPC-style approach via raw SQL isn't available,
-  //    so we do it client-side: fetch mappings, fetch projects without workstream, update matches
-  try {
-    // Fetch all category mappings that have a workstream assigned
-    const mappingsResp = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/sm_category_mappings?workstream_id=not.is.null&select=id,workstream_id`,
-      { headers: { 'apikey': env.SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}` } },
-    );
-    if (mappingsResp.ok) {
-      const mappings = await mappingsResp.json() as { id: string; workstream_id: string }[];
-      if (mappings.length > 0) {
-        const mappingLookup = new Map(mappings.map((m) => [m.id, m.workstream_id]));
-
-        // Fetch projects with sm_category_id but no workstream
-        const projResp = await fetch(
-          `${env.SUPABASE_URL}/rest/v1/projects?workstream_id=is.null&sm_category_id=not.is.null&select=id,sm_category_id`,
-          { headers: { 'apikey': env.SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}` } },
-        );
-        if (projResp.ok) {
-          const unmappedProjects = await projResp.json() as { id: string; sm_category_id: string }[];
-          for (const proj of unmappedProjects) {
-            const wsId = mappingLookup.get(proj.sm_category_id);
-            if (wsId) {
-              await fetch(`${env.SUPABASE_URL}/rest/v1/projects?id=eq.${encodeURIComponent(proj.id)}`, {
-                method: 'PATCH',
-                headers,
-                body: JSON.stringify({ workstream_id: wsId }),
-              });
-            }
-          }
-        }
-      }
-    }
-  } catch {
-    // Non-fatal: workstream auto-assignment is best-effort
   }
 
   return jsonResponse({
     categoriesSynced: body.categories.length,
-    projectsUpdated,
-    projectsCreated,
+    projectsSynced,
     errors,
   });
 }

@@ -246,7 +246,8 @@ export default function TasksPage() {
     setPushing(true);
     try {
       // Sync stakeholders/categories first so TF projects exist before tasks arrive
-      await syncStakeholdersToTaskFlow();
+      // Non-fatal: push continues even if sync fails
+      try { await syncStakeholdersToTaskFlow(); } catch { /* sync is best-effort */ }
       const result = await pushConfirmedTasks();
       if (result.failed > 0) {
         addToast(`Pushed ${result.pushed} tasks, ${result.failed} failed`, 'error');
