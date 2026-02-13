@@ -1,7 +1,7 @@
 import { db } from '../db/database';
 import type { Task, TaskStatus, SyncOperation } from '../db/database';
 
-export type TaskCreateInput = Omit<Task, 'id' | 'status' | 'createdAt' | 'updatedAt' | 'deletedAt'>;
+export type TaskCreateInput = Omit<Task, 'id' | 'status' | 'taskFlowSyncedAt' | 'createdAt' | 'updatedAt' | 'deletedAt'>;
 
 export class TaskRepository {
   async getAll(): Promise<Task[]> {
@@ -41,6 +41,7 @@ export class TaskRepository {
       ...input,
       id,
       status: 'todo',
+      taskFlowSyncedAt: null,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
@@ -56,6 +57,7 @@ export class TaskRepository {
       ...input,
       id: crypto.randomUUID(),
       status: 'todo' as TaskStatus,
+      taskFlowSyncedAt: null,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
@@ -118,6 +120,15 @@ export class TaskRepository {
 
   async getDeleted(): Promise<Task[]> {
     return db.tasks.filter(t => t.deletedAt !== null).toArray();
+  }
+
+  async markTaskFlowSynced(ids: string[]): Promise<void> {
+    const now = new Date();
+    await db.tasks.where('id').anyOf(ids).modify({ taskFlowSyncedAt: now });
+  }
+
+  async resetTaskFlowSync(): Promise<void> {
+    await db.tasks.toCollection().modify({ taskFlowSyncedAt: null });
   }
 
   private async queueSync(operation: SyncOperation, entityId: string): Promise<void> {

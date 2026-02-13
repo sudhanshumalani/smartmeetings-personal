@@ -1,5 +1,6 @@
 import { db } from '../db/database';
 import { getCloudBackupUrl, getCloudBackupToken } from './settingsService';
+import { taskRepository } from './taskRepository';
 
 export interface TaskFlowSyncResult {
   categoriesSynced: number;
@@ -13,8 +14,8 @@ export interface TaskFlowPushResult {
   errors: { taskId: string | null; error: string }[];
 }
 
-/** Push all confirmed (non-deleted) tasks to TaskFlow via Cloudflare Worker → Supabase */
-export async function pushConfirmedTasks(): Promise<TaskFlowPushResult> {
+/** Push confirmed tasks to TaskFlow. When force=true, sends all; otherwise only new/changed tasks. */
+export async function pushConfirmedTasks(force?: boolean): Promise<TaskFlowPushResult> {
   const url = await getCloudBackupUrl();
   const token = await getCloudBackupToken();
   if (!url || !token) {
@@ -23,7 +24,15 @@ export async function pushConfirmedTasks(): Promise<TaskFlowPushResult> {
 
   const baseUrl = url.replace(/\/+$/, '');
 
-  const tasks = await db.tasks.filter((t) => t.deletedAt === null).toArray();
+  const allTasks = await db.tasks.filter((t) => t.deletedAt === null).toArray();
+  const tasks = force
+    ? allTasks
+    : allTasks.filter(
+        (t) =>
+          t.taskFlowSyncedAt === null ||
+          t.taskFlowSyncedAt === undefined ||
+          t.updatedAt > t.taskFlowSyncedAt,
+      );
   if (tasks.length === 0) {
     return { pushed: 0, failed: 0, errors: [] };
   }
@@ -94,11 +103,18 @@ export async function pushConfirmedTasks(): Promise<TaskFlowPushResult> {
     throw new Error(`Push to TaskFlow failed (${response.status}): ${errBody}`);
   }
 
-  return response.json() as Promise<TaskFlowPushResult>;
+  const result = await response.json() as TaskFlowPushResult;
+
+  // Mark pushed tasks as synced when all succeeded
+  if (result.failed === 0) {
+    await taskRepository.markTaskFlowSynced(tasks.map((t) => t.id));
+  }
+
+  return result;
 }
 
-/** Sync all stakeholders and categories to TaskFlow so projects exist before tasks arrive */
-export async function syncStakeholdersToTaskFlow(): Promise<TaskFlowSyncResult> {
+/** Sync stakeholders and categories to TaskFlow. If meetingIds provided, only sends those referenced by those meetings. */
+export async function syncStakeholdersToTaskFlow(meetingIds?: string[]): Promise<TaskFlowSyncResult> {
   const url = await getCloudBackupUrl();
   const token = await getCloudBackupToken();
   if (!url || !token) {
@@ -107,13 +123,29 @@ export async function syncStakeholdersToTaskFlow(): Promise<TaskFlowSyncResult> 
 
   const baseUrl = url.replace(/\/+$/, '');
 
-  // Read all non-deleted stakeholders and categories from Dexie
-  const stakeholders = await db.stakeholders
-    .filter((s) => s.deletedAt === null)
-    .toArray();
-  const categories = await db.stakeholderCategories
-    .filter((c) => c.deletedAt === null)
-    .toArray();
+  let stakeholders;
+  let categories;
+
+  if (meetingIds && meetingIds.length > 0) {
+    // Scope to stakeholders referenced by the given meetings
+    const meetings = await db.meetings.where('id').anyOf(meetingIds).toArray();
+    const stakeholderIds = [...new Set(meetings.flatMap((m) => m.stakeholderIds ?? []))];
+    stakeholders = stakeholderIds.length > 0
+      ? await db.stakeholders.where('id').anyOf(stakeholderIds).filter((s) => s.deletedAt === null).toArray()
+      : [];
+    const categoryIds = [...new Set(stakeholders.flatMap((s) => s.categoryIds ?? []))];
+    categories = categoryIds.length > 0
+      ? await db.stakeholderCategories.where('id').anyOf(categoryIds).filter((c) => c.deletedAt === null).toArray()
+      : [];
+  } else {
+    // Fallback: send all (force re-push mode)
+    stakeholders = await db.stakeholders
+      .filter((s) => s.deletedAt === null)
+      .toArray();
+    categories = await db.stakeholderCategories
+      .filter((c) => c.deletedAt === null)
+      .toArray();
+  }
 
   const payload = {
     stakeholders: stakeholders.map((s) => ({

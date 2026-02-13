@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ListTodo, ClipboardCopy, Send, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import { ListTodo, ClipboardCopy, Send, Loader2, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { db } from '../../../db/database';
 import type { Task } from '../../../db/database';
 import { taskRepository } from '../../../services/taskRepository';
@@ -130,6 +130,8 @@ export default function TasksPage() {
   const [groupBy, setGroupBy] = useState<GroupByOption>('stakeholder');
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
   const [pushing, setPushing] = useState(false);
+  const [pushMenuOpen, setPushMenuOpen] = useState(false);
+  const pushMenuRef = useRef<HTMLDivElement>(null);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
   const tasks = useLiveQuery(() => taskRepository.getAll());
@@ -155,6 +157,31 @@ export default function TasksPage() {
     }
     return map;
   }, [meetings, stakeholders]);
+
+  // Count tasks that need pushing to TaskFlow
+  const pendingPushCount = useMemo(() => {
+    if (!tasks) return 0;
+    return tasks.filter(
+      (t) =>
+        t.taskFlowSyncedAt === null ||
+        t.taskFlowSyncedAt === undefined ||
+        t.updatedAt > t.taskFlowSyncedAt,
+    ).length;
+  }, [tasks]);
+
+  // Close push menu on outside click
+  const closePushMenu = useCallback((e: MouseEvent) => {
+    if (pushMenuRef.current && !pushMenuRef.current.contains(e.target as Node)) {
+      setPushMenuOpen(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (pushMenuOpen) {
+      document.addEventListener('mousedown', closePushMenu);
+      return () => document.removeEventListener('mousedown', closePushMenu);
+    }
+  }, [pushMenuOpen, closePushMenu]);
 
   const filteredTasks = useMemo(() => {
     if (!tasks) return [];
@@ -238,21 +265,34 @@ export default function TasksPage() {
     addToast('Tasks copied to clipboard', 'success');
   }
 
-  async function handlePushToTaskFlow() {
+  async function handlePushToTaskFlow(force?: boolean) {
     if (!tasks || tasks.length === 0) {
       addToast('No tasks to push', 'info');
       return;
     }
+    if (!force && pendingPushCount === 0) {
+      addToast('All tasks already synced', 'info');
+      return;
+    }
+    setPushMenuOpen(false);
     setPushing(true);
     try {
-      // Sync stakeholders/categories first so TF projects exist before tasks arrive
+      // Scope stakeholder sync to relevant meetings when doing incremental push
+      const meetingIds = force ? undefined : [...new Set(tasks.filter(
+        (t) =>
+          t.taskFlowSyncedAt === null ||
+          t.taskFlowSyncedAt === undefined ||
+          t.updatedAt > t.taskFlowSyncedAt,
+      ).map((t) => t.meetingId))];
       // Non-fatal: push continues even if sync fails
-      try { await syncStakeholdersToTaskFlow(); } catch { /* sync is best-effort */ }
-      const result = await pushConfirmedTasks();
+      try { await syncStakeholdersToTaskFlow(meetingIds); } catch { /* sync is best-effort */ }
+      const result = await pushConfirmedTasks(force);
       if (result.failed > 0) {
         addToast(`Pushed ${result.pushed} tasks, ${result.failed} failed`, 'error');
+      } else if (force) {
+        addToast(`Re-pushed all ${result.pushed} tasks to TaskFlow`, 'success');
       } else {
-        addToast(`${result.pushed} tasks pushed to TaskFlow`, 'success');
+        addToast(`${result.pushed} new task${result.pushed === 1 ? '' : 's'} pushed to TaskFlow`, 'success');
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
@@ -282,14 +322,41 @@ export default function TasksPage() {
           Tasks
         </h1>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handlePushToTaskFlow}
-            disabled={pushing || !navigator.onLine}
-            className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {pushing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-            {pushing ? 'Pushing...' : 'Push to TaskFlow'}
-          </button>
+          <div className="relative" ref={pushMenuRef}>
+            <div className="flex">
+              <button
+                onClick={() => handlePushToTaskFlow()}
+                disabled={pushing || !navigator.onLine}
+                className="flex items-center gap-1.5 rounded-l-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {pushing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                {pushing
+                  ? 'Pushing...'
+                  : pendingPushCount > 0
+                    ? `Push to TaskFlow (${pendingPushCount})`
+                    : 'All synced'}
+              </button>
+              <button
+                onClick={() => setPushMenuOpen((v) => !v)}
+                disabled={pushing || !navigator.onLine}
+                className="flex items-center rounded-r-lg border-l border-brand-500 bg-brand-600 px-1.5 py-2 text-white transition-colors hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Push options"
+              >
+                <ChevronDown size={14} />
+              </button>
+            </div>
+            {pushMenuOpen && (
+              <div className="absolute right-0 z-10 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+                <button
+                  onClick={() => handlePushToTaskFlow(true)}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  <RefreshCw size={14} />
+                  Re-push All
+                </button>
+              </div>
+            )}
+          </div>
           <button
             onClick={handleExport}
             className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"

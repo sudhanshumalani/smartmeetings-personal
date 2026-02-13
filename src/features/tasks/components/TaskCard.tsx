@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Trash2, User, Bell, ExternalLink } from 'lucide-react';
+import { Trash2, User, Bell, ExternalLink, CloudUpload, CheckCircle } from 'lucide-react';
 import type { Task } from '../../../db/database';
 
 const PRIORITY_STYLES: Record<string, string> = {
@@ -14,8 +14,17 @@ interface TaskCardProps {
   onDelete: (id: string) => void;
 }
 
+function isSyncedToTaskFlow(task: Task): boolean {
+  return (
+    task.taskFlowSyncedAt !== null &&
+    task.taskFlowSyncedAt !== undefined &&
+    task.updatedAt <= task.taskFlowSyncedAt
+  );
+}
+
 export default function TaskCard({ task, onToggleStatus, onDelete }: TaskCardProps) {
   const isDone = task.status === 'done';
+  const synced = isSyncedToTaskFlow(task);
 
   return (
     <div className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-4 transition-colors hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600">
@@ -74,6 +83,17 @@ export default function TaskCard({ task, onToggleStatus, onDelete }: TaskCardPro
           {task.owner && task.owner !== 'TBD' && (
             <span className="text-xs text-gray-500 dark:text-gray-400">
               Owner: {task.owner}
+            </span>
+          )}
+
+          {/* Sync status */}
+          {synced ? (
+            <span className="inline-flex items-center gap-0.5 text-gray-400 dark:text-gray-500" title="Synced to TaskFlow">
+              <CheckCircle size={11} />
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-0.5 text-amber-500 dark:text-amber-400" title="Pending push to TaskFlow">
+              <CloudUpload size={11} />
             </span>
           )}
         </div>
