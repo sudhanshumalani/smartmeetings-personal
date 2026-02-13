@@ -321,39 +321,67 @@ async function handleSyncStakeholders(request: Request, env: Env): Promise<Respo
     }
   }
 
-  // 2. Upsert stakeholders into projects table
-  let projectsUpserted = 0;
+  // 2. Sync stakeholders into projects table (match by sm_stakeholder_id, not slug)
+  let projectsUpdated = 0;
+  let projectsCreated = 0;
   if (body.stakeholders.length > 0) {
-    const projectRows = body.stakeholders.map((s) => {
-      const slug = s.name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '');
+    // Fetch all existing projects that have sm_stakeholder_id set
+    const existingResp = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/projects?sm_stakeholder_id=not.is.null&select=id,sm_stakeholder_id`,
+      { headers: { 'apikey': env.SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}` } },
+    );
+    const existingProjects = existingResp.ok
+      ? await existingResp.json() as { id: string; sm_stakeholder_id: string }[]
+      : [];
+    const existingBySmId = new Map(existingProjects.map((p) => [p.sm_stakeholder_id, p.id]));
 
-      return {
-        id: slug,
-        name: s.name,
-        sm_stakeholder_name: s.name,
-        sm_stakeholder_id: s.id,
-        sm_category_id: s.categoryIds?.length > 0 ? s.categoryIds[0] : null,
-      };
-    });
+    for (const s of body.stakeholders) {
+      const smCategoryId = s.categoryIds?.length > 0 ? s.categoryIds[0] : null;
+      const existingProjectId = existingBySmId.get(s.id);
 
-    const projResponse = await fetch(`${env.SUPABASE_URL}/rest/v1/projects?on_conflict=sm_stakeholder_id`, {
-      method: 'POST',
-      headers: {
-        ...headers,
-        'Prefer': 'resolution=merge-duplicates,return=representation',
-      },
-      body: JSON.stringify(projectRows),
-    });
+      if (existingProjectId) {
+        // Update existing project: refresh name and category
+        const patchResp = await fetch(
+          `${env.SUPABASE_URL}/rest/v1/projects?id=eq.${encodeURIComponent(existingProjectId)}`,
+          {
+            method: 'PATCH',
+            headers,
+            body: JSON.stringify({
+              name: s.name,
+              sm_stakeholder_name: s.name,
+              sm_category_id: smCategoryId,
+            }),
+          },
+        );
+        if (patchResp.ok) projectsUpdated++;
+        else errors.push(`Project update failed for ${s.name}: ${await patchResp.text()}`);
+      } else {
+        // Create new project with slug ID
+        const slug = s.name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '');
 
-    if (!projResponse.ok) {
-      const errText = await projResponse.text();
-      errors.push(`Project upsert failed (${projResponse.status}): ${errText}`);
-    } else {
-      const result = await projResponse.json() as unknown[];
-      projectsUpserted = result.length;
+        const postResp = await fetch(`${env.SUPABASE_URL}/rest/v1/projects`, {
+          method: 'POST',
+          headers: { ...headers, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({
+            id: slug,
+            name: s.name,
+            sm_stakeholder_name: s.name,
+            sm_stakeholder_id: s.id,
+            sm_category_id: smCategoryId,
+          }),
+        });
+        if (postResp.ok) projectsCreated++;
+        else {
+          const errText = await postResp.text();
+          // Ignore duplicate key errors (project already exists with this slug)
+          if (!errText.includes('duplicate key')) {
+            errors.push(`Project create failed for ${s.name}: ${errText}`);
+          }
+        }
+      }
     }
   }
 
@@ -397,7 +425,8 @@ async function handleSyncStakeholders(request: Request, env: Env): Promise<Respo
 
   return jsonResponse({
     categoriesSynced: body.categories.length,
-    projectsUpserted,
+    projectsUpdated,
+    projectsCreated,
     errors,
   });
 }
