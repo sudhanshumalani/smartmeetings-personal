@@ -44,6 +44,7 @@ export async function pushConfirmedTasks(): Promise<TaskFlowPushResult> {
     const meetingStakeholders = (meeting?.stakeholderIds ?? [])
       .map((sid) => stakeholderMap.get(sid))
       .filter(Boolean);
+    const stakeholderIds = meetingStakeholders.map((s) => s!.id);
     const stakeholderNames = meetingStakeholders.map((s) => s!.name);
     const stakeholderCategories = [
       ...new Set(
@@ -65,6 +66,7 @@ export async function pushConfirmedTasks(): Promise<TaskFlowPushResult> {
       followUpTarget: t.followUpTarget,
       sourceMeetingTitle: t.sourceMeetingTitle,
       sourceMeetingId: t.meetingId,
+      stakeholderIds,
       stakeholderNames,
       stakeholderCategories,
       createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : String(t.createdAt),
