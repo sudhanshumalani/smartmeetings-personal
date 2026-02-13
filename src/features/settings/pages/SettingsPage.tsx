@@ -127,6 +127,7 @@ export default function SettingsPage() {
         const savedCloudUrl = await getCloudBackupUrl();
         setCloudUrl(savedCloudUrl);
         const savedCloudToken = await getCloudBackupToken();
+        setCloudToken(savedCloudToken);
         setCloudTokenSet(!!savedCloudToken);
         setCloudConfigured(!!savedCloudUrl && !!savedCloudToken);
 
@@ -304,7 +305,6 @@ export default function SettingsPage() {
       setCloudTokenSet(!!cloudToken);
       const savedUrl = await getCloudBackupUrl();
       setCloudConfigured(!!savedUrl && !!cloudToken);
-      setCloudToken('');
       setShowCloudToken(false);
       addToast(cloudToken ? 'Sync token saved' : 'Sync token removed', 'success');
     } catch {
