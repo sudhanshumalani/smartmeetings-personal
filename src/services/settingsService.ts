@@ -105,31 +105,8 @@ export async function saveCloudBackupToken(token: string): Promise<void> {
   });
 }
 
-/** Returns the Cloud Backup sync token. Migrates legacy encrypted values to plain text. */
+/** Returns the Cloud Backup sync token. */
 export async function getCloudBackupToken(): Promise<string> {
   const settings = await getSettings();
-  if (!settings.cloudBackupToken) return '';
-
-  // If the stored value looks like base64 (legacy encrypted), try to decrypt and migrate
-  if (/^[A-Za-z0-9+/]+=*$/.test(settings.cloudBackupToken) && settings.cloudBackupToken.length > 50) {
-    try {
-      const decrypted = await decrypt(settings.cloudBackupToken);
-      // Migration: re-save as plain text so this path is only hit once
-      await db.appSettings.update('default', {
-        cloudBackupToken: decrypted,
-        updatedAt: new Date(),
-      });
-      return decrypted;
-    } catch {
-      // Decryption failed (key lost) — stored value is unrecoverable.
-      // Clear it so user can re-enter.
-      await db.appSettings.update('default', {
-        cloudBackupToken: '',
-        updatedAt: new Date(),
-      });
-      return '';
-    }
-  }
-
-  return settings.cloudBackupToken;
+  return settings.cloudBackupToken || '';
 }
