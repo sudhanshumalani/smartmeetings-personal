@@ -231,9 +231,9 @@ async function handleTaskFlowPush(request: Request, env: Env): Promise<Response>
     follow_up_target: t.followUpTarget || null,
     source_meeting_title: t.sourceMeetingTitle || null,
     source_meeting_id: t.sourceMeetingId || null,
-    sm_stakeholder_id: t.stakeholderIds ?? [],
-    sm_stakeholder_name: t.stakeholderNames ?? [],
-    sm_stakeholder_category: t.stakeholderCategories ?? [],
+    sm_stakeholder_id:       t.stakeholderIds?.length === 1 ? t.stakeholderIds[0] : null,
+    sm_stakeholder_name:     t.stakeholderNames?.length === 1 ? t.stakeholderNames[0] : null,
+    sm_stakeholder_category: t.stakeholderCategories?.length === 1 ? t.stakeholderCategories[0] : null,
     sm_created_at: t.createdAt,
     sm_updated_at: t.updatedAt,
   }));
@@ -268,6 +268,140 @@ async function handleTaskFlowPush(request: Request, env: Env): Promise<Response>
   }
 }
 
+interface SyncStakeholderPayload {
+  stakeholders: { id: string; name: string; categoryIds: string[] }[];
+  categories: { id: string; name: string }[];
+}
+
+async function handleSyncStakeholders(request: Request, env: Env): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+    return errorResponse('TaskFlow integration not configured. Set SUPABASE_URL and SUPABASE_SERVICE_KEY Worker secrets.', 500);
+  }
+
+  let body: SyncStakeholderPayload;
+  try {
+    body = await request.json() as SyncStakeholderPayload;
+  } catch {
+    return errorResponse('Invalid JSON body', 400);
+  }
+
+  if (!body.stakeholders || !Array.isArray(body.stakeholders)) {
+    return errorResponse('Missing "stakeholders" array', 400);
+  }
+  if (!body.categories || !Array.isArray(body.categories)) {
+    return errorResponse('Missing "categories" array', 400);
+  }
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'apikey': env.SUPABASE_SERVICE_KEY,
+    'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+    'Prefer': 'resolution=merge-duplicates',
+  };
+
+  const errors: string[] = [];
+
+  // 1. Upsert categories into sm_category_mappings (preserves user's workstream_id)
+  if (body.categories.length > 0) {
+    const categoryRows = body.categories.map((c) => ({
+      id: c.id,
+      name: c.name,
+      updated_at: new Date().toISOString(),
+    }));
+
+    const catResponse = await fetch(`${env.SUPABASE_URL}/rest/v1/sm_category_mappings`, {
+      method: 'POST',
+      headers: { ...headers, 'Prefer': 'resolution=merge-duplicates' },
+      body: JSON.stringify(categoryRows),
+    });
+
+    if (!catResponse.ok) {
+      const errText = await catResponse.text();
+      errors.push(`Category upsert failed (${catResponse.status}): ${errText}`);
+    }
+  }
+
+  // 2. Upsert stakeholders into projects table
+  let projectsUpserted = 0;
+  if (body.stakeholders.length > 0) {
+    const projectRows = body.stakeholders.map((s) => {
+      const slug = s.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+
+      return {
+        id: slug,
+        name: s.name,
+        sm_stakeholder_name: s.name,
+        sm_stakeholder_id: s.id,
+        sm_category_id: s.categoryIds?.length > 0 ? s.categoryIds[0] : null,
+      };
+    });
+
+    const projResponse = await fetch(`${env.SUPABASE_URL}/rest/v1/projects?on_conflict=sm_stakeholder_id`, {
+      method: 'POST',
+      headers: {
+        ...headers,
+        'Prefer': 'resolution=merge-duplicates,return=representation',
+      },
+      body: JSON.stringify(projectRows),
+    });
+
+    if (!projResponse.ok) {
+      const errText = await projResponse.text();
+      errors.push(`Project upsert failed (${projResponse.status}): ${errText}`);
+    } else {
+      const result = await projResponse.json() as unknown[];
+      projectsUpserted = result.length;
+    }
+  }
+
+  // 3. Auto-set workstream_id on projects that have sm_category_id mapped but no workstream yet
+  //    This uses a Supabase RPC-style approach via raw SQL isn't available,
+  //    so we do it client-side: fetch mappings, fetch projects without workstream, update matches
+  try {
+    // Fetch all category mappings that have a workstream assigned
+    const mappingsResp = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/sm_category_mappings?workstream_id=not.is.null&select=id,workstream_id`,
+      { headers: { 'apikey': env.SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}` } },
+    );
+    if (mappingsResp.ok) {
+      const mappings = await mappingsResp.json() as { id: string; workstream_id: string }[];
+      if (mappings.length > 0) {
+        const mappingLookup = new Map(mappings.map((m) => [m.id, m.workstream_id]));
+
+        // Fetch projects with sm_category_id but no workstream
+        const projResp = await fetch(
+          `${env.SUPABASE_URL}/rest/v1/projects?workstream_id=is.null&sm_category_id=not.is.null&select=id,sm_category_id`,
+          { headers: { 'apikey': env.SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}` } },
+        );
+        if (projResp.ok) {
+          const unmappedProjects = await projResp.json() as { id: string; sm_category_id: string }[];
+          for (const proj of unmappedProjects) {
+            const wsId = mappingLookup.get(proj.sm_category_id);
+            if (wsId) {
+              await fetch(`${env.SUPABASE_URL}/rest/v1/projects?id=eq.${encodeURIComponent(proj.id)}`, {
+                method: 'PATCH',
+                headers,
+                body: JSON.stringify({ workstream_id: wsId }),
+              });
+            }
+          }
+        }
+      }
+    }
+  } catch {
+    // Non-fatal: workstream auto-assignment is best-effort
+  }
+
+  return jsonResponse({
+    categoriesSynced: body.categories.length,
+    projectsUpserted,
+    errors,
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     // Handle CORS preflight
@@ -297,6 +431,10 @@ export default {
 
     if (request.method === 'POST' && path === '/taskflow/push') {
       return handleTaskFlowPush(request, env);
+    }
+
+    if (request.method === 'POST' && path === '/taskflow/sync-stakeholders') {
+      return handleSyncStakeholders(request, env);
     }
 
     return errorResponse('Not found', 404);

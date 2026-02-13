@@ -5,7 +5,7 @@ import { db } from '../../../db/database';
 import type { Task } from '../../../db/database';
 import { taskRepository } from '../../../services/taskRepository';
 import { useToast } from '../../../contexts/ToastContext';
-import { pushConfirmedTasks } from '../../../services/taskFlowService';
+import { pushConfirmedTasks, syncStakeholdersToTaskFlow } from '../../../services/taskFlowService';
 import EmptyState from '../../../shared/components/EmptyState';
 import TaskCard from '../components/TaskCard';
 
@@ -245,6 +245,8 @@ export default function TasksPage() {
     }
     setPushing(true);
     try {
+      // Sync stakeholders/categories first so TF projects exist before tasks arrive
+      await syncStakeholdersToTaskFlow();
       const result = await pushConfirmedTasks();
       if (result.failed > 0) {
         addToast(`Pushed ${result.pushed} tasks, ${result.failed} failed`, 'error');

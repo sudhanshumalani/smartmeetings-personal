@@ -1,6 +1,12 @@
 import { db } from '../db/database';
 import { getCloudBackupUrl, getCloudBackupToken } from './settingsService';
 
+export interface TaskFlowSyncResult {
+  categoriesSynced: number;
+  projectsUpserted: number;
+  errors: string[];
+}
+
 export interface TaskFlowPushResult {
   pushed: number;
   failed: number;
@@ -89,4 +95,51 @@ export async function pushConfirmedTasks(): Promise<TaskFlowPushResult> {
   }
 
   return response.json() as Promise<TaskFlowPushResult>;
+}
+
+/** Sync all stakeholders and categories to TaskFlow so projects exist before tasks arrive */
+export async function syncStakeholdersToTaskFlow(): Promise<TaskFlowSyncResult> {
+  const url = await getCloudBackupUrl();
+  const token = await getCloudBackupToken();
+  if (!url || !token) {
+    throw new Error('Cloud sync not configured. Set URL and token in Settings.');
+  }
+
+  const baseUrl = url.replace(/\/+$/, '');
+
+  // Read all non-deleted stakeholders and categories from Dexie
+  const stakeholders = await db.stakeholders
+    .filter((s) => s.deletedAt === null)
+    .toArray();
+  const categories = await db.stakeholderCategories
+    .filter((c) => c.deletedAt === null)
+    .toArray();
+
+  const payload = {
+    stakeholders: stakeholders.map((s) => ({
+      id: s.id,
+      name: s.name,
+      categoryIds: s.categoryIds ?? [],
+    })),
+    categories: categories.map((c) => ({
+      id: c.id,
+      name: c.name,
+    })),
+  };
+
+  const response = await fetch(`${baseUrl}/taskflow/sync-stakeholders`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errBody = await response.text();
+    throw new Error(`Stakeholder sync failed (${response.status}): ${errBody}`);
+  }
+
+  return response.json() as Promise<TaskFlowSyncResult>;
 }
