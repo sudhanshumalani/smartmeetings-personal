@@ -101,6 +101,7 @@ describe('SmartMeetingsDB', () => {
       email: 'jane@example.com',
       organization: 'Acme Corp',
       categoryIds: ['cat-1'],
+      taskFlowSyncedAt: null,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,

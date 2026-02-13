@@ -157,7 +157,7 @@ describe('CategoryRepository', () => {
 
       await db.stakeholders.add({
         id: 's1', name: 'Alice', categoryIds: [catId, 'other-cat'],
-        createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
+        taskFlowSyncedAt: null, createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
       });
 
       await repo.permanentDelete(catId);
@@ -171,7 +171,7 @@ describe('CategoryRepository', () => {
 
       await db.stakeholders.add({
         id: 's1', name: 'Alice', categoryIds: [catId],
-        createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
+        taskFlowSyncedAt: null, createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
       });
 
       await repo.permanentDelete(catId);

@@ -277,15 +277,9 @@ export default function TasksPage() {
     setPushMenuOpen(false);
     setPushing(true);
     try {
-      // Scope stakeholder sync to relevant meetings when doing incremental push
-      const meetingIds = force ? undefined : [...new Set(tasks.filter(
-        (t) =>
-          t.taskFlowSyncedAt === null ||
-          t.taskFlowSyncedAt === undefined ||
-          t.updatedAt > t.taskFlowSyncedAt,
-      ).map((t) => t.meetingId))];
+      // Sync stakeholders/categories first so TF projects exist before tasks arrive
       // Non-fatal: push continues even if sync fails
-      try { await syncStakeholdersToTaskFlow(meetingIds); } catch { /* sync is best-effort */ }
+      try { await syncStakeholdersToTaskFlow(force); } catch { /* sync is best-effort */ }
       const result = await pushConfirmedTasks(force);
       if (result.failed > 0) {
         addToast(`Pushed ${result.pushed} tasks, ${result.failed} failed`, 'error');

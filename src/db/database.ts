@@ -26,6 +26,7 @@ export interface Stakeholder {
   organization?: string;
   notes?: string;
   categoryIds: string[];
+  taskFlowSyncedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -35,6 +36,7 @@ export interface StakeholderCategory {
   id: string;
   name: string;
   color: string;
+  taskFlowSyncedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -310,9 +312,17 @@ export class SmartMeetingsDB extends Dexie {
       errorLogs: 'id, timestamp',
       tasks: 'id, meetingId, analysisId, type, status, priority, deadline, createdAt, updatedAt, deletedAt',
     }).upgrade(tx => {
-      return tx.table('tasks').toCollection().modify(task => {
-        task.taskFlowSyncedAt = null;
-      });
+      return Promise.all([
+        tx.table('tasks').toCollection().modify(task => {
+          task.taskFlowSyncedAt = null;
+        }),
+        tx.table('stakeholders').toCollection().modify(s => {
+          s.taskFlowSyncedAt = null;
+        }),
+        tx.table('stakeholderCategories').toCollection().modify(c => {
+          c.taskFlowSyncedAt = null;
+        }),
+      ]);
     });
   }
 }

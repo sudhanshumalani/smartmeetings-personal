@@ -31,6 +31,7 @@ export class CategoryRepository {
       id,
       name: data.name,
       color: data.color,
+      taskFlowSyncedAt: null,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
@@ -91,6 +92,15 @@ export class CategoryRepository {
 
       await db.stakeholderCategories.delete(id);
     });
+  }
+
+  async markTaskFlowSynced(ids: string[]): Promise<void> {
+    const now = new Date();
+    await db.stakeholderCategories.where('id').anyOf(ids).modify({ taskFlowSyncedAt: now });
+  }
+
+  async resetTaskFlowSync(): Promise<void> {
+    await db.stakeholderCategories.toCollection().modify({ taskFlowSyncedAt: null });
   }
 
   private async queueSync(operation: SyncOperation, entityId: string): Promise<void> {

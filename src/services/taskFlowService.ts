@@ -1,6 +1,8 @@
 import { db } from '../db/database';
 import { getCloudBackupUrl, getCloudBackupToken } from './settingsService';
 import { taskRepository } from './taskRepository';
+import { stakeholderRepository } from './stakeholderRepository';
+import { categoryRepository } from './categoryRepository';
 
 export interface TaskFlowSyncResult {
   categoriesSynced: number;
@@ -113,8 +115,16 @@ export async function pushConfirmedTasks(force?: boolean): Promise<TaskFlowPushR
   return result;
 }
 
-/** Sync stakeholders and categories to TaskFlow. If meetingIds provided, only sends those referenced by those meetings. */
-export async function syncStakeholdersToTaskFlow(meetingIds?: string[]): Promise<TaskFlowSyncResult> {
+function needsSync(entity: { taskFlowSyncedAt?: Date | null; updatedAt: Date }): boolean {
+  return (
+    entity.taskFlowSyncedAt === null ||
+    entity.taskFlowSyncedAt === undefined ||
+    entity.updatedAt > entity.taskFlowSyncedAt
+  );
+}
+
+/** Sync stakeholders and categories to TaskFlow. When force=true, sends all; otherwise only new/changed. */
+export async function syncStakeholdersToTaskFlow(force?: boolean): Promise<TaskFlowSyncResult> {
   const url = await getCloudBackupUrl();
   const token = await getCloudBackupToken();
   if (!url || !token) {
@@ -123,28 +133,29 @@ export async function syncStakeholdersToTaskFlow(meetingIds?: string[]): Promise
 
   const baseUrl = url.replace(/\/+$/, '');
 
-  let stakeholders;
-  let categories;
+  const allStakeholders = await db.stakeholders
+    .filter((s) => s.deletedAt === null)
+    .toArray();
+  const allCategories = await db.stakeholderCategories
+    .filter((c) => c.deletedAt === null)
+    .toArray();
 
-  if (meetingIds && meetingIds.length > 0) {
-    // Scope to stakeholders referenced by the given meetings
-    const meetings = await db.meetings.where('id').anyOf(meetingIds).toArray();
-    const stakeholderIds = [...new Set(meetings.flatMap((m) => m.stakeholderIds ?? []))];
-    stakeholders = stakeholderIds.length > 0
-      ? await db.stakeholders.where('id').anyOf(stakeholderIds).filter((s) => s.deletedAt === null).toArray()
-      : [];
-    const categoryIds = [...new Set(stakeholders.flatMap((s) => s.categoryIds ?? []))];
-    categories = categoryIds.length > 0
-      ? await db.stakeholderCategories.where('id').anyOf(categoryIds).filter((c) => c.deletedAt === null).toArray()
-      : [];
-  } else {
-    // Fallback: send all (force re-push mode)
-    stakeholders = await db.stakeholders
-      .filter((s) => s.deletedAt === null)
-      .toArray();
-    categories = await db.stakeholderCategories
-      .filter((c) => c.deletedAt === null)
-      .toArray();
+  const stakeholders = force ? allStakeholders : allStakeholders.filter(needsSync);
+  const categories = force ? allCategories : allCategories.filter(needsSync);
+
+  if (stakeholders.length === 0 && categories.length === 0) {
+    return { categoriesSynced: 0, projectsUpserted: 0, errors: [] };
+  }
+
+  // When pushing changed stakeholders, also include any categories they reference
+  // (even if the category itself hasn't changed) so the Worker can resolve them
+  if (!force && stakeholders.length > 0) {
+    const referencedCategoryIds = new Set(stakeholders.flatMap((s) => s.categoryIds ?? []));
+    for (const cat of allCategories) {
+      if (referencedCategoryIds.has(cat.id) && !categories.some((c) => c.id === cat.id)) {
+        categories.push(cat);
+      }
+    }
   }
 
   const payload = {
@@ -173,5 +184,17 @@ export async function syncStakeholdersToTaskFlow(meetingIds?: string[]): Promise
     throw new Error(`Stakeholder sync failed (${response.status}): ${errBody}`);
   }
 
-  return response.json() as Promise<TaskFlowSyncResult>;
+  const result = await response.json() as TaskFlowSyncResult;
+
+  // Mark synced on success
+  if (result.errors.length === 0) {
+    if (stakeholders.length > 0) {
+      await stakeholderRepository.markTaskFlowSynced(stakeholders.map((s) => s.id));
+    }
+    if (categories.length > 0) {
+      await categoryRepository.markTaskFlowSynced(categories.map((c) => c.id));
+    }
+  }
+
+  return result;
 }

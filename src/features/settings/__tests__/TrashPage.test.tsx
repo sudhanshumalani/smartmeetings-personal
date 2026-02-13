@@ -53,6 +53,7 @@ async function seedDeletedStakeholder(name: string): Promise<string> {
     id,
     name,
     categoryIds: [],
+    taskFlowSyncedAt: null,
     createdAt: now,
     updatedAt: now,
     deletedAt: new Date(Date.now() - 60 * 60 * 1000), // 1 hour ago
@@ -67,6 +68,7 @@ async function seedDeletedCategory(name: string): Promise<string> {
     id,
     name,
     color: '#ef4444',
+    taskFlowSyncedAt: null,
     createdAt: now,
     updatedAt: now,
     deletedAt: new Date(Date.now() - 5 * 60 * 1000), // 5 minutes ago

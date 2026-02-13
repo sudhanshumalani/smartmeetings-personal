@@ -2,13 +2,14 @@ import { db } from '../db/database';
 import type { Stakeholder, SyncOperation } from '../db/database';
 
 export class StakeholderRepository {
-  async create(data: Omit<Stakeholder, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>): Promise<string> {
+  async create(data: Omit<Stakeholder, 'id' | 'taskFlowSyncedAt' | 'createdAt' | 'updatedAt' | 'deletedAt'>): Promise<string> {
     const id = crypto.randomUUID();
     const now = new Date();
 
     await db.stakeholders.add({
       ...data,
       id,
+      taskFlowSyncedAt: null,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
@@ -83,6 +84,15 @@ export class StakeholderRepository {
     return db.stakeholders
       .filter(s => s.deletedAt === null && s.categoryIds.includes(categoryId))
       .sortBy('name');
+  }
+
+  async markTaskFlowSynced(ids: string[]): Promise<void> {
+    const now = new Date();
+    await db.stakeholders.where('id').anyOf(ids).modify({ taskFlowSyncedAt: now });
+  }
+
+  async resetTaskFlowSync(): Promise<void> {
+    await db.stakeholders.toCollection().modify({ taskFlowSyncedAt: null });
   }
 
   private async queueSync(operation: SyncOperation, entityId: string): Promise<void> {
