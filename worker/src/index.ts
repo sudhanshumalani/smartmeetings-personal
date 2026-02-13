@@ -300,31 +300,55 @@ async function handleSyncStakeholders(request: Request, env: Env): Promise<Respo
 
   const errors: string[] = [];
 
-  // 1. Upsert categories into sm_category_mappings (non-fatal if table doesn't exist yet)
+  // 0. Fetch user_id from taskflow_config (service key has no auth.uid() context)
+  let userId: string | null = null;
+  try {
+    const configResp = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/taskflow_config?key=eq.taskflow_user_id&select=value`,
+      { headers: supaHeaders },
+    );
+    if (configResp.ok) {
+      const rows = await configResp.json() as { value: string }[];
+      userId = rows.length > 0 ? rows[0].value : null;
+    }
+  } catch {
+    // fall through
+  }
+
+  if (!userId) {
+    return errorResponse('taskflow_user_id not configured in taskflow_config table', 400);
+  }
+
+  // 1. Upsert categories into sm_category_mappings
+  let categoriesSynced = 0;
   if (body.categories.length > 0) {
     try {
       const categoryRows = body.categories.map((c) => ({
         id: c.id,
+        user_id: userId,
         name: c.name,
         updated_at: new Date().toISOString(),
       }));
 
       const catResponse = await fetch(`${env.SUPABASE_URL}/rest/v1/sm_category_mappings`, {
         method: 'POST',
-        headers: { ...supaHeaders, 'Prefer': 'resolution=merge-duplicates' },
+        headers: { ...supaHeaders, 'Prefer': 'resolution=merge-duplicates,return=representation' },
         body: JSON.stringify(categoryRows),
       });
 
-      if (!catResponse.ok) {
-        errors.push(`Category sync skipped (${catResponse.status}): table may not exist yet — run migration 009`);
+      if (catResponse.ok) {
+        const result = await catResponse.json() as unknown[];
+        categoriesSynced = result.length;
+      } else {
+        const errText = await catResponse.text();
+        errors.push(`Category sync failed (${catResponse.status}): ${errText}`);
       }
     } catch {
-      errors.push('Category sync skipped: network error');
+      errors.push('Category sync failed: network error');
     }
   }
 
-  // 2. Sync stakeholders into projects — fetch existing, then ONE bulk upsert for updates
-  //    Uses only 2 subrequests total (fetch + upsert) to stay within Cloudflare limits
+  // 2. Sync stakeholders into projects — fetch existing, then ONE bulk upsert
   let projectsSynced = 0;
   if (body.stakeholders.length > 0) {
     try {
@@ -341,16 +365,18 @@ async function handleSyncStakeholders(request: Request, env: Env): Promise<Respo
       // Build rows for bulk upsert via primary key (id)
       const upsertRows = body.stakeholders.map((s) => {
         const existing = existingBySmId.get(s.id);
-        // Use existing project ID if found, otherwise generate slug
         const id = existing
           ? existing.id
           : s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
         return {
           id,
+          user_id: userId,
           name: s.name,
+          active: true,
           sm_stakeholder_name: s.name,
           sm_stakeholder_id: s.id,
+          sm_category_id: s.categoryIds?.length > 0 ? s.categoryIds[0] : null,
         };
       });
 
@@ -373,7 +399,7 @@ async function handleSyncStakeholders(request: Request, env: Env): Promise<Respo
   }
 
   return jsonResponse({
-    categoriesSynced: body.categories.length,
+    categoriesSynced,
     projectsSynced,
     errors,
   });
