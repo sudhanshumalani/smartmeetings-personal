@@ -174,14 +174,24 @@ export class ClaudeService {
     return this.client !== null;
   }
 
-  /** Analyze meeting text via the Claude API. Returns parsed AnalysisResult. */
-  async analyze(text: string, promptContent?: string): Promise<AnalysisResult> {
+  /** Analyze meeting text via the Claude API. Returns parsed AnalysisResult.
+   *  If projectContext is provided, it's injected before the meeting content
+   *  to give Claude awareness of previous meetings, open items, and active tasks.
+   */
+  async analyze(text: string, promptContent?: string, projectContext?: string): Promise<AnalysisResult> {
     if (!this.client) {
       throw new Error('Claude API key not configured');
     }
 
     const template = promptContent || ANALYSIS_PROMPT;
-    const prompt = template.replace('${text}', text);
+
+    // Inject project context if available
+    let enrichedText = text;
+    if (projectContext) {
+      enrichedText = `[Previous Context]\n${projectContext}\n\n---\n\n[Current Meeting]\n${text}`;
+    }
+
+    const prompt = template.replace('${text}', enrichedText);
 
     const response = await this.client.messages.create({
       model: 'claude-haiku-4-5-20251001',
@@ -328,6 +338,65 @@ Return ONLY valid JSON, no markdown code blocks.`;
       throw new Error('Invalid analysis format: missing required field "nextSteps"');
     }
     return parsed as AnalysisResult;
+  }
+
+  /**
+   * Build project context for a meeting by fetching previous meetings
+   * with the same stakeholders and their open items.
+   * Returns a formatted string to inject into the analysis prompt.
+   */
+  async buildProjectContext(stakeholderIds: string[]): Promise<string | undefined> {
+    if (!stakeholderIds.length) return undefined;
+
+    try {
+      // Get previous meetings with these stakeholders from local DB
+      const allMeetings = await db.meetings
+        .filter((m) => m.deletedAt === null && m.stakeholderIds.some((id) => stakeholderIds.includes(id)))
+        .sortBy('date');
+
+      // Get the most recent 3 meetings (excluding the current one being analyzed)
+      const recentMeetings = allMeetings.slice(-3);
+      if (!recentMeetings.length) return undefined;
+
+      const sections: string[] = [];
+
+      for (const meeting of recentMeetings) {
+        const analyses = await db.meetingAnalyses
+          .where('meetingId')
+          .equals(meeting.id)
+          .filter((a) => a.deletedAt === null)
+          .toArray();
+
+        const analysis = analyses[0];
+        if (!analysis) continue;
+
+        const meetingDate = new Date(meeting.date).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        });
+
+        let section = `Previous Meeting (${meetingDate}): ${meeting.title}\n`;
+        section += `Summary: ${analysis.summary}\n`;
+
+        if (analysis.decisions.length > 0) {
+          section += `Decisions:\n${analysis.decisions.map((d) => `  - ${d.decision} (by ${d.madeBy})`).join('\n')}\n`;
+        }
+
+        if (analysis.openItems.length > 0) {
+          section += `Open Items:\n${analysis.openItems.map((o) => `  - [${o.type}] ${o.item} (owner: ${o.owner})`).join('\n')}\n`;
+        }
+
+        sections.push(section);
+      }
+
+      if (!sections.length) return undefined;
+
+      return sections.join('\n---\n');
+    } catch (err) {
+      console.warn('Failed to build project context:', err);
+      return undefined;
+    }
   }
 }
 

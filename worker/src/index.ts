@@ -446,6 +446,94 @@ async function handleTaskFlowCounts(env: Env): Promise<Response> {
   });
 }
 
+// --- Handler: GET /taskflow/tasks-for-stakeholder ---
+async function handleTasksForStakeholder(request: Request, env: Env): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+    return errorResponse('TaskFlow integration not configured', 500);
+  }
+
+  const url = new URL(request.url);
+  const stakeholderName = url.searchParams.get('stakeholder_name');
+  const stakeholderId = url.searchParams.get('stakeholder_id');
+
+  if (!stakeholderName && !stakeholderId) {
+    return errorResponse('stakeholder_name or stakeholder_id query parameter required', 400);
+  }
+
+  try {
+    // First, find the project(s) matching this stakeholder
+    let projectFilter = '';
+    if (stakeholderId) {
+      projectFilter = `sm_stakeholder_id=eq.${encodeURIComponent(stakeholderId)}`;
+    } else if (stakeholderName) {
+      projectFilter = `sm_stakeholder_name=ilike.*${encodeURIComponent(stakeholderName!)}*`;
+    }
+
+    const projectsResp = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/projects?${projectFilter}&select=id,name`,
+      {
+        headers: {
+          'apikey': env.SUPABASE_SERVICE_KEY,
+          'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+        },
+      },
+    );
+
+    if (!projectsResp.ok) {
+      return errorResponse('Failed to query projects', 502);
+    }
+
+    const projects: Array<{ id: string; name: string }> = await projectsResp.json();
+    const projectIds = projects.map((p) => p.id);
+
+    if (!projectIds.length) {
+      return jsonResponse({ active_tasks: [], overdue_tasks: [], recent_completed: [], projects: [] });
+    }
+
+    // Fetch tasks for these projects
+    const today = new Date().toISOString().split('T')[0];
+    const projectIdList = projectIds.map((id) => `"${id}"`).join(',');
+
+    const [activeResp, doneResp] = await Promise.all([
+      fetch(
+        `${env.SUPABASE_URL}/rest/v1/tasks?project_id=in.(${projectIdList})&status=in.(active,waiting)&select=id,title,status,priority,due_date,task_type&order=due_date.asc.nullslast`,
+        {
+          headers: {
+            'apikey': env.SUPABASE_SERVICE_KEY,
+            'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+          },
+        },
+      ),
+      fetch(
+        `${env.SUPABASE_URL}/rest/v1/tasks?project_id=in.(${projectIdList})&status=eq.done&order=completed_at.desc&limit=5&select=id,title,completed_at`,
+        {
+          headers: {
+            'apikey': env.SUPABASE_SERVICE_KEY,
+            'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+          },
+        },
+      ),
+    ]);
+
+    const activeTasks: any[] = activeResp.ok ? await activeResp.json() : [];
+    const doneTasks: any[] = doneResp.ok ? await doneResp.json() : [];
+
+    const overdueTasks = activeTasks.filter(
+      (t: any) => t.due_date && t.due_date < today && t.status === 'active',
+    );
+
+    return jsonResponse({
+      active_tasks: activeTasks,
+      overdue_tasks: overdueTasks,
+      recent_completed: doneTasks,
+      projects: projects,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Internal error';
+    return errorResponse(message, 500);
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     // Handle CORS preflight
@@ -484,6 +572,10 @@ export default {
 
       if (request.method === 'GET' && path === '/taskflow/counts') {
         return handleTaskFlowCounts(env);
+      }
+
+      if (request.method === 'GET' && path === '/taskflow/tasks-for-stakeholder') {
+        return handleTasksForStakeholder(request, env);
       }
 
       return errorResponse('Not found', 404);
