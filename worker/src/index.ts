@@ -405,6 +405,47 @@ async function handleSyncStakeholders(request: Request, env: Env): Promise<Respo
   });
 }
 
+async function handleTaskFlowCounts(env: Env): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+    return errorResponse('TaskFlow integration not configured. Set SUPABASE_URL and SUPABASE_SERVICE_KEY Worker secrets.', 500);
+  }
+
+  const supaHeaders = {
+    'apikey': env.SUPABASE_SERVICE_KEY,
+    'Authorization': `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+    'Prefer': 'count=exact',
+  };
+
+  const [tasksResp, projectsResp, categoriesResp] = await Promise.all([
+    fetch(`${env.SUPABASE_URL}/rest/v1/taskflow_inbox?select=id&source=eq.smartmeetings`, {
+      method: 'HEAD',
+      headers: supaHeaders,
+    }),
+    fetch(`${env.SUPABASE_URL}/rest/v1/projects?select=id&sm_stakeholder_id=not.is.null`, {
+      method: 'HEAD',
+      headers: supaHeaders,
+    }),
+    fetch(`${env.SUPABASE_URL}/rest/v1/sm_category_mappings?select=id`, {
+      method: 'HEAD',
+      headers: supaHeaders,
+    }),
+  ]);
+
+  function getCount(resp: Response): number {
+    const range = resp.headers.get('content-range');
+    if (!range) return -1;
+    // content-range format: "0-9/42" or "*/0"
+    const match = range.match(/\/(\d+)$/);
+    return match ? parseInt(match[1], 10) : -1;
+  }
+
+  return jsonResponse({
+    tasks: getCount(tasksResp),
+    projects: getCount(projectsResp),
+    categories: getCount(categoriesResp),
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     // Handle CORS preflight
@@ -439,6 +480,10 @@ export default {
 
       if (request.method === 'POST' && path === '/taskflow/sync-stakeholders') {
         return handleSyncStakeholders(request, env);
+      }
+
+      if (request.method === 'GET' && path === '/taskflow/counts') {
+        return handleTaskFlowCounts(env);
       }
 
       return errorResponse('Not found', 404);

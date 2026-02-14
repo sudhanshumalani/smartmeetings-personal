@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Pencil, Trash2, Plus, Check, X } from 'lucide-react';
+import { Pencil, Trash2, Plus, Check, X, CheckCircle, CloudUpload } from 'lucide-react';
 import { categoryRepository, CATEGORY_COLORS } from '../../../services/categoryRepository';
 import type { StakeholderCategory } from '../../../db/database';
 import { useToast } from '../../../contexts/ToastContext';
@@ -185,12 +185,25 @@ export default function CategoryManager() {
             >
               <div className="flex items-center gap-2">
                 <span
-                  className="h-4 w-4 rounded-full"
+                  className="h-4 w-4 shrink-0 rounded-full"
                   style={{ backgroundColor: cat.color }}
                 />
                 <span className="text-sm text-gray-800 dark:text-gray-200">
                   {cat.name}
                 </span>
+                {cat.taskFlowSyncedAt !== null &&
+                cat.taskFlowSyncedAt !== undefined &&
+                cat.updatedAt <= cat.taskFlowSyncedAt ? (
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-green-50 px-1.5 py-0.5 text-[9px] font-semibold text-green-600 dark:bg-green-900/30 dark:text-green-400" title="Synced to TaskFlow">
+                    <CheckCircle size={9} />
+                    Synced
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" title="Pending push to TaskFlow">
+                    <CloudUpload size={9} />
+                    Pending
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-1">
                 <button

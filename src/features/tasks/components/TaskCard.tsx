@@ -88,12 +88,14 @@ export default function TaskCard({ task, onToggleStatus, onDelete }: TaskCardPro
 
           {/* Sync status */}
           {synced ? (
-            <span className="inline-flex items-center gap-0.5 text-gray-400 dark:text-gray-500" title="Synced to TaskFlow">
-              <CheckCircle size={11} />
+            <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-semibold text-green-600 dark:bg-green-900/30 dark:text-green-400" title="Synced to TaskFlow">
+              <CheckCircle size={10} />
+              Synced
             </span>
           ) : (
-            <span className="inline-flex items-center gap-0.5 text-amber-500 dark:text-amber-400" title="Pending push to TaskFlow">
-              <CloudUpload size={11} />
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" title="Pending push to TaskFlow">
+              <CloudUpload size={10} />
+              Pending
             </span>
           )}
         </div>

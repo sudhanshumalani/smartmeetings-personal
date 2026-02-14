@@ -5,7 +5,7 @@ import { db } from '../../../db/database';
 import type { Task } from '../../../db/database';
 import { taskRepository } from '../../../services/taskRepository';
 import { useToast } from '../../../contexts/ToastContext';
-import { pushConfirmedTasks, syncStakeholdersToTaskFlow } from '../../../services/taskFlowService';
+import { pushConfirmedTasks, syncStakeholdersToTaskFlow, verifyTaskFlowSync } from '../../../services/taskFlowService';
 import EmptyState from '../../../shared/components/EmptyState';
 import TaskCard from '../components/TaskCard';
 
@@ -287,6 +287,11 @@ export default function TasksPage() {
         addToast(`Re-pushed all ${result.pushed} tasks to TaskFlow`, 'success');
       } else {
         addToast(`${result.pushed} new task${result.pushed === 1 ? '' : 's'} pushed to TaskFlow`, 'success');
+      }
+      // Verify counts match — if mismatch, reset sync status and warn
+      const mismatch = await verifyTaskFlowSync();
+      if (mismatch) {
+        addToast(mismatch, 'warning', 8000);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';

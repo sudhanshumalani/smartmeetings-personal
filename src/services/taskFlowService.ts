@@ -198,3 +198,60 @@ export async function syncStakeholdersToTaskFlow(force?: boolean): Promise<TaskF
 
   return result;
 }
+
+export interface TaskFlowCountsResult {
+  tasks: number;
+  projects: number;
+  categories: number;
+}
+
+/**
+ * Verify local sync status against remote TaskFlow counts.
+ * If remote has fewer records than local expects, resets sync status so next push re-sends.
+ * Returns a warning message if mismatch detected, null if all good.
+ */
+export async function verifyTaskFlowSync(): Promise<string | null> {
+  const url = await getCloudBackupUrl();
+  const token = await getCloudBackupToken();
+  if (!url || !token) return null;
+
+  const baseUrl = url.replace(/\/+$/, '');
+
+  try {
+    const response = await fetch(`${baseUrl}/taskflow/counts`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+
+    if (!response.ok) return null;
+
+    const remote = await response.json() as TaskFlowCountsResult;
+
+    const localTasks = await db.tasks.filter((t) => t.deletedAt === null).count();
+    const localStakeholders = await db.stakeholders.filter((s) => s.deletedAt === null).count();
+    const localCategories = await db.stakeholderCategories.filter((c) => c.deletedAt === null).count();
+
+    const mismatches: string[] = [];
+
+    if (remote.tasks >= 0 && remote.tasks < localTasks) {
+      await taskRepository.resetTaskFlowSync();
+      mismatches.push(`tasks (remote: ${remote.tasks}, local: ${localTasks})`);
+    }
+    if (remote.projects >= 0 && remote.projects < localStakeholders) {
+      await stakeholderRepository.resetTaskFlowSync();
+      mismatches.push(`stakeholders (remote: ${remote.projects}, local: ${localStakeholders})`);
+    }
+    if (remote.categories >= 0 && remote.categories < localCategories) {
+      await categoryRepository.resetTaskFlowSync();
+      mismatches.push(`categories (remote: ${remote.categories}, local: ${localCategories})`);
+    }
+
+    if (mismatches.length > 0) {
+      return `Sync mismatch detected: ${mismatches.join(', ')}. Sync status reset — push again to fix.`;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}

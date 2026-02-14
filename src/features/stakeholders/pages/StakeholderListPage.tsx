@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Plus, Search, Users, Tags } from 'lucide-react';
+import { Plus, Search, Users, Tags, CheckCircle, CloudUpload } from 'lucide-react';
 import type { StakeholderCategory } from '../../../db/database';
 import { stakeholderRepository } from '../../../services/stakeholderRepository';
 import { categoryRepository } from '../../../services/categoryRepository';
@@ -167,15 +167,32 @@ export default function StakeholderListPage() {
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {filtered.map((s) => {
                 const cats = getStakeholderCategories(s.categoryIds);
+                const synced =
+                  s.taskFlowSyncedAt !== null &&
+                  s.taskFlowSyncedAt !== undefined &&
+                  s.updatedAt <= s.taskFlowSyncedAt;
                 return (
                   <button
                     key={s.id}
                     onClick={() => navigate(`/stakeholders/${s.id}`)}
                     className="flex w-full flex-col gap-2 rounded-lg border border-gray-200 bg-white p-4 text-left transition-shadow hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
                   >
-                    <h3 className="truncate font-medium text-gray-900 dark:text-gray-100">
-                      {s.name}
-                    </h3>
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="truncate font-medium text-gray-900 dark:text-gray-100">
+                        {s.name}
+                      </h3>
+                      {synced ? (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-semibold text-green-600 dark:bg-green-900/30 dark:text-green-400" title="Synced to TaskFlow">
+                          <CheckCircle size={10} />
+                          Synced
+                        </span>
+                      ) : (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" title="Pending push to TaskFlow">
+                          <CloudUpload size={10} />
+                          Pending
+                        </span>
+                      )}
+                    </div>
                     {s.organization && (
                       <p className="truncate text-sm text-gray-500 dark:text-gray-400">
                         {s.organization}
