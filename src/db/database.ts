@@ -153,6 +153,7 @@ export interface Task {
   sourceMeetingTitle: string;
   sourceActionItemIndex: number;
   taskFlowSyncedAt: Date | null;
+  archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -323,6 +324,26 @@ export class SmartMeetingsDB extends Dexie {
           c.taskFlowSyncedAt = null;
         }),
       ]);
+    });
+
+    this.version(6).stores({
+      meetings: 'id, date, status, *tags, *stakeholderIds, createdAt, updatedAt, deletedAt',
+      stakeholders: 'id, name, *categoryIds, createdAt, updatedAt, deletedAt',
+      stakeholderCategories: 'id, name, createdAt, deletedAt',
+      audioRecordings: 'id, meetingId, order, createdAt, updatedAt, deletedAt',
+      audioChunkBuffers: 'id, sessionId, meetingId, chunkIndex',
+      transcripts: 'id, meetingId, audioRecordingId, createdAt, updatedAt, deletedAt',
+      meetingAnalyses: 'id, meetingId, createdAt, deletedAt',
+      appSettings: 'id',
+      syncQueue: 'id, entity, entityId, createdAt, syncedAt',
+      promptTemplates: 'id, name, isDefault, createdAt, deletedAt',
+      meetingTemplates: 'id, name, createdAt, deletedAt',
+      errorLogs: 'id, timestamp',
+      tasks: 'id, meetingId, analysisId, type, status, priority, deadline, createdAt, updatedAt, deletedAt',
+    }).upgrade(tx => {
+      return tx.table('tasks').toCollection().modify(task => {
+        task.archivedAt = null;
+      });
     });
   }
 }

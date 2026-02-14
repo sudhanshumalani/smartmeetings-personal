@@ -107,9 +107,11 @@ export async function pushConfirmedTasks(force?: boolean): Promise<TaskFlowPushR
 
   const result = await response.json() as TaskFlowPushResult;
 
-  // Mark pushed tasks as synced when all succeeded
+  // Mark pushed tasks as synced when all succeeded, then archive them
   if (result.failed === 0) {
     await taskRepository.markTaskFlowSynced(tasks.map((t) => t.id));
+    const archived = await taskRepository.archiveSynced();
+    (result as TaskFlowPushResult & { archived?: number }).archived = archived;
   }
 
   return result;

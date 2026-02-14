@@ -1,12 +1,29 @@
 import { db } from '../db/database';
 import type { Task, TaskStatus, SyncOperation } from '../db/database';
 
-export type TaskCreateInput = Omit<Task, 'id' | 'status' | 'taskFlowSyncedAt' | 'createdAt' | 'updatedAt' | 'deletedAt'>;
+export type TaskCreateInput = Omit<Task, 'id' | 'status' | 'taskFlowSyncedAt' | 'archivedAt' | 'createdAt' | 'updatedAt' | 'deletedAt'>;
 
 export class TaskRepository {
+  /** All non-deleted tasks (active + archived) */
   async getAll(): Promise<Task[]> {
     return db.tasks
       .filter(t => t.deletedAt === null)
+      .reverse()
+      .sortBy('createdAt');
+  }
+
+  /** Non-deleted, non-archived tasks */
+  async getActive(): Promise<Task[]> {
+    return db.tasks
+      .filter(t => t.deletedAt === null && (t.archivedAt === null || t.archivedAt === undefined))
+      .reverse()
+      .sortBy('createdAt');
+  }
+
+  /** Non-deleted, archived tasks */
+  async getArchived(): Promise<Task[]> {
+    return db.tasks
+      .filter(t => t.deletedAt === null && t.archivedAt !== null && t.archivedAt !== undefined)
       .reverse()
       .sortBy('createdAt');
   }
@@ -42,6 +59,7 @@ export class TaskRepository {
       id,
       status: 'todo',
       taskFlowSyncedAt: null,
+      archivedAt: null,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
@@ -58,6 +76,7 @@ export class TaskRepository {
       id: crypto.randomUUID(),
       status: 'todo' as TaskStatus,
       taskFlowSyncedAt: null,
+      archivedAt: null,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
@@ -120,6 +139,28 @@ export class TaskRepository {
 
   async getDeleted(): Promise<Task[]> {
     return db.tasks.filter(t => t.deletedAt !== null).toArray();
+  }
+
+  async archiveSynced(): Promise<number> {
+    const now = new Date();
+    let count = 0;
+    await db.tasks
+      .filter(t =>
+        t.deletedAt === null &&
+        (t.archivedAt === null || t.archivedAt === undefined) &&
+        t.taskFlowSyncedAt !== null &&
+        t.taskFlowSyncedAt !== undefined &&
+        t.updatedAt <= t.taskFlowSyncedAt,
+      )
+      .modify(task => {
+        task.archivedAt = now;
+        count++;
+      });
+    return count;
+  }
+
+  async unarchive(id: string): Promise<void> {
+    await db.tasks.update(id, { archivedAt: null, updatedAt: new Date() });
   }
 
   async markTaskFlowSynced(ids: string[]): Promise<void> {

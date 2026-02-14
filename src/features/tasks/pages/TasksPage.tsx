@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ListTodo, ClipboardCopy, Send, Loader2, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
+import { ListTodo, ClipboardCopy, Send, Loader2, ChevronDown, ChevronRight, RefreshCw, Archive } from 'lucide-react';
 import { db } from '../../../db/database';
 import type { Task } from '../../../db/database';
 import { taskRepository } from '../../../services/taskRepository';
@@ -133,8 +133,13 @@ export default function TasksPage() {
   const [pushMenuOpen, setPushMenuOpen] = useState(false);
   const pushMenuRef = useRef<HTMLDivElement>(null);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const [showArchived, setShowArchived] = useState(false);
 
-  const tasks = useLiveQuery(() => taskRepository.getAll());
+  const tasks = useLiveQuery(
+    () => (showArchived ? taskRepository.getArchived() : taskRepository.getActive()),
+    [showArchived],
+  );
+  const archivedCount = useLiveQuery(() => taskRepository.getArchived().then(t => t.length));
 
   // Load meetings and stakeholders for stakeholder grouping
   const meetings = useLiveQuery(() =>
@@ -244,6 +249,11 @@ export default function TasksPage() {
     );
   }
 
+  async function handleUnarchive(id: string) {
+    await taskRepository.unarchive(id);
+    addToast('Task moved back to active', 'success');
+  }
+
   function handleExport() {
     if (!tasks || tasks.length === 0) {
       addToast('No tasks to export', 'info');
@@ -281,12 +291,13 @@ export default function TasksPage() {
       // Non-fatal: push continues even if sync fails
       try { await syncStakeholdersToTaskFlow(force); } catch { /* sync is best-effort */ }
       const result = await pushConfirmedTasks(force);
+      const archivedNum = (result as { archived?: number }).archived ?? 0;
       if (result.failed > 0) {
         addToast(`Pushed ${result.pushed} tasks, ${result.failed} failed`, 'error');
       } else if (force) {
-        addToast(`Re-pushed all ${result.pushed} tasks to TaskFlow`, 'success');
+        addToast(`Re-pushed all ${result.pushed} tasks to TaskFlow${archivedNum > 0 ? ` — ${archivedNum} archived` : ''}`, 'success');
       } else {
-        addToast(`${result.pushed} new task${result.pushed === 1 ? '' : 's'} pushed to TaskFlow`, 'success');
+        addToast(`${result.pushed} task${result.pushed === 1 ? '' : 's'} pushed to TaskFlow${archivedNum > 0 ? ` — ${archivedNum} archived` : ''}`, 'success');
       }
       // Verify counts match — if mismatch, reset sync status and warn
       const mismatch = await verifyTaskFlowSync();
@@ -363,6 +374,17 @@ export default function TasksPage() {
             <ClipboardCopy size={14} />
             Export
           </button>
+          <button
+            onClick={() => { setShowArchived(v => !v); setCollapsedSections(new Set()); }}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+              showArchived
+                ? 'border-brand-300 bg-brand-50 text-brand-700 dark:border-brand-600 dark:bg-brand-900/30 dark:text-brand-300'
+                : 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700'
+            }`}
+          >
+            <Archive size={14} />
+            Archived{(archivedCount ?? 0) > 0 ? ` (${archivedCount})` : ''}
+          </button>
         </div>
       </div>
 
@@ -424,9 +446,11 @@ export default function TasksPage() {
         </div>
       ) : sortedTasks.length === 0 ? (
         <EmptyState
-          icon={<ListTodo size={48} />}
-          title="No tasks yet"
-          description="Open a meeting's Analysis tab and triage action items to add them as tasks."
+          icon={showArchived ? <Archive size={48} /> : <ListTodo size={48} />}
+          title={showArchived ? 'No archived tasks' : 'No tasks yet'}
+          description={showArchived
+            ? 'Tasks are automatically archived after being pushed to TaskFlow.'
+            : 'Open a meeting\'s Analysis tab and triage action items to add them as tasks.'}
         />
       ) : (
         <div className="space-y-5">
@@ -454,7 +478,8 @@ export default function TasksPage() {
                         key={task.id}
                         task={task}
                         onToggleStatus={handleToggleStatus}
-                        onDelete={handleDelete}
+                        onDelete={showArchived ? handleUnarchive : handleDelete}
+                        deleteIcon={showArchived ? 'unarchive' : 'delete'}
                       />
                     ))}
                     {doneInSection.length > 0 && todoInSection.length > 0 && (
@@ -465,7 +490,8 @@ export default function TasksPage() {
                         key={task.id}
                         task={task}
                         onToggleStatus={handleToggleStatus}
-                        onDelete={handleDelete}
+                        onDelete={showArchived ? handleUnarchive : handleDelete}
+                        deleteIcon={showArchived ? 'unarchive' : 'delete'}
                       />
                     ))}
                   </div>

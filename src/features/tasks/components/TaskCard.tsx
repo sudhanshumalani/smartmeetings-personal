@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Trash2, User, Bell, ExternalLink, CloudUpload, CheckCircle } from 'lucide-react';
+import { Trash2, RotateCcw, User, Bell, ExternalLink, CloudUpload, CheckCircle } from 'lucide-react';
 import type { Task } from '../../../db/database';
 
 const PRIORITY_STYLES: Record<string, string> = {
@@ -12,6 +12,7 @@ interface TaskCardProps {
   task: Task;
   onToggleStatus: (id: string) => void;
   onDelete: (id: string) => void;
+  deleteIcon?: 'delete' | 'unarchive';
 }
 
 function isSyncedToTaskFlow(task: Task): boolean {
@@ -22,7 +23,7 @@ function isSyncedToTaskFlow(task: Task): boolean {
   );
 }
 
-export default function TaskCard({ task, onToggleStatus, onDelete }: TaskCardProps) {
+export default function TaskCard({ task, onToggleStatus, onDelete, deleteIcon = 'delete' }: TaskCardProps) {
   const isDone = task.status === 'done';
   const synced = isSyncedToTaskFlow(task);
 
@@ -119,13 +120,17 @@ export default function TaskCard({ task, onToggleStatus, onDelete }: TaskCardPro
         )}
       </div>
 
-      {/* Delete button */}
+      {/* Delete / Unarchive button */}
       <button
         onClick={() => onDelete(task.id)}
-        className="shrink-0 rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-        aria-label="Delete task"
+        className={`shrink-0 rounded-lg p-1.5 transition-colors ${
+          deleteIcon === 'unarchive'
+            ? 'text-gray-400 hover:bg-brand-50 hover:text-brand-500 dark:hover:bg-brand-900/20 dark:hover:text-brand-400'
+            : 'text-gray-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400'
+        }`}
+        aria-label={deleteIcon === 'unarchive' ? 'Unarchive task' : 'Delete task'}
       >
-        <Trash2 size={14} />
+        {deleteIcon === 'unarchive' ? <RotateCcw size={14} /> : <Trash2 size={14} />}
       </button>
     </div>
   );

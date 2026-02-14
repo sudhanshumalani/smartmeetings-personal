@@ -1,10 +1,12 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Plus, Search, Users, Tags, CheckCircle, CloudUpload } from 'lucide-react';
+import { Plus, Search, Users, Tags, CheckCircle, CloudUpload, Send, Loader2 } from 'lucide-react';
 import type { StakeholderCategory } from '../../../db/database';
 import { stakeholderRepository } from '../../../services/stakeholderRepository';
 import { categoryRepository } from '../../../services/categoryRepository';
+import { syncStakeholdersToTaskFlow, verifyTaskFlowSync } from '../../../services/taskFlowService';
+import { useToast } from '../../../contexts/ToastContext';
 import useIsMobile from '../../../shared/hooks/useIsMobile';
 import EmptyState from '../../../shared/components/EmptyState';
 import CategoryBadge from '../components/CategoryBadge';
@@ -14,10 +16,12 @@ import StakeholderForm from '../components/StakeholderForm';
 export default function StakeholderListPage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategoryId, setFilterCategoryId] = useState<string | ''>('');
   const [formOpen, setFormOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'stakeholders' | 'categories'>('stakeholders');
+  const [syncing, setSyncing] = useState(false);
 
   const stakeholders = useLiveQuery(() => stakeholderRepository.getAll());
   const categories = useLiveQuery(() => categoryRepository.getAll());
@@ -58,6 +62,48 @@ export default function StakeholderListPage() {
       .filter((c): c is StakeholderCategory => c !== undefined);
   }
 
+  const pendingSyncCount = useMemo(() => {
+    const pendingStakeholders = (stakeholders ?? []).filter(
+      (s) => s.taskFlowSyncedAt === null || s.taskFlowSyncedAt === undefined || s.updatedAt > s.taskFlowSyncedAt,
+    ).length;
+    const pendingCategories = (categories ?? []).filter(
+      (c) => c.taskFlowSyncedAt === null || c.taskFlowSyncedAt === undefined || c.updatedAt > c.taskFlowSyncedAt,
+    ).length;
+    return pendingStakeholders + pendingCategories;
+  }, [stakeholders, categories]);
+
+  async function handleSyncToTaskFlow() {
+    if (pendingSyncCount === 0) {
+      addToast('All stakeholders and categories already synced', 'info');
+      return;
+    }
+    setSyncing(true);
+    try {
+      const result = await syncStakeholdersToTaskFlow();
+      if (result.errors.length > 0) {
+        addToast(`Sync completed with errors: ${result.errors.join(', ')}`, 'error');
+      } else {
+        const parts: string[] = [];
+        if (result.projectsUpserted > 0) parts.push(`${result.projectsUpserted} stakeholder${result.projectsUpserted === 1 ? '' : 's'}`);
+        if (result.categoriesSynced > 0) parts.push(`${result.categoriesSynced} ${result.categoriesSynced === 1 ? 'category' : 'categories'}`);
+        addToast(`Synced ${parts.join(' and ')} to TaskFlow`, 'success');
+      }
+      const mismatch = await verifyTaskFlowSync();
+      if (mismatch) {
+        addToast(mismatch, 'warning', 8000);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      if (message.includes('Cloud sync not configured')) {
+        addToast('Cloud sync not configured. Set URL and token in Settings.', 'warning');
+      } else {
+        addToast(`Sync failed: ${message}`, 'error');
+      }
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   const isLoading = stakeholders === undefined;
   const noStakeholders = !isLoading && !searchQuery && !filterCategoryId && filtered.length === 0;
   const noResults = !isLoading && (!!searchQuery || !!filterCategoryId) && filtered.length === 0;
@@ -74,10 +120,20 @@ export default function StakeholderListPage() {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
           Stakeholders
         </h1>
-        {activeTab === 'stakeholders' && (
-          isMobile ? (
-            <p className="text-xs text-gray-400">Manage on desktop</p>
-          ) : (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSyncToTaskFlow}
+            disabled={syncing || !navigator.onLine}
+            className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {syncing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            {syncing
+              ? 'Syncing...'
+              : pendingSyncCount > 0
+                ? `Sync to TaskFlow (${pendingSyncCount})`
+                : 'All synced'}
+          </button>
+          {activeTab === 'stakeholders' && !isMobile && (
             <button
               onClick={() => setFormOpen(true)}
               className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
@@ -85,8 +141,8 @@ export default function StakeholderListPage() {
               <Plus size={16} />
               Add Stakeholder
             </button>
-          )
-        )}
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
