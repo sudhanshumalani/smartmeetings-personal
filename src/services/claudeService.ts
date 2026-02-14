@@ -144,8 +144,8 @@ export async function prepareAnalysisText(
     result = notesPlainText.trim();
   }
 
-  // Cap input at ~60,000 chars (~15,000 tokens) to keep API calls fast
-  const MAX_INPUT_CHARS = 60_000;
+  // Cap input at ~400,000 chars (~100,000 tokens) — Claude supports up to 200K tokens
+  const MAX_INPUT_CHARS = 400_000;
   if (result.length > MAX_INPUT_CHARS) {
     result = result.slice(0, MAX_INPUT_CHARS) + '\n\n[Content truncated for length]';
   }
